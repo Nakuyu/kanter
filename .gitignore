@@ -1,0 +1,13 @@
+# Binary
+kanter
+
+# Board data
+kanter.json
+
+.DS_Store
+*~
+*.swp
+.idea/
+*.test
+*.out
+coverage.html
