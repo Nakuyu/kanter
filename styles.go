@@ -59,20 +59,12 @@ func SelectedBodyStyle(colIdx int) lipgloss.Style {
 		Foreground(lipgloss.Color("#8B949E"))
 }
 
-func ColumnBorder(colIdx int, active bool) lipgloss.Style {
-	color := columnColours[colIdx]
-	if !active {
-		color = "#21262D"
-	}
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(color).
-		Padding(0, 1).
-		Width(30)
-}
-
 func ColumnHeader(colIdx int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Bold(true).
 		Foreground(columnColours[colIdx])
+}
+
+func columnBorderColor(colIdx int) lipgloss.Color {
+	return columnColours[colIdx]
 }

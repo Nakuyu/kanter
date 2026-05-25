@@ -9,8 +9,6 @@ import (
 
 const maxColWidth = 40
 
-// ─── Main View ────────────────────────────────────────────────────────────
-
 func (m Model) View() string {
 	footer := m.footerView()
 
@@ -83,6 +81,56 @@ func (m Model) renderContent() string {
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
+// ─── Border rendering ─────────────────────────────────────────────────────
+
+func renderTopBorder(w int, header, scroll string, color lipgloss.Color, active bool) string {
+	hw := lipgloss.Width(header)
+	style := lipgloss.NewStyle().Foreground(color)
+
+	tl, tr, hz := "┌", "┐", "─"
+	if active {
+		tl, tr, hz = "╔", "╗", "═"
+	}
+
+	if scroll == "" {
+		fill := max(w-hw-4, 0)
+		return style.Render(tl + hz + header + strings.Repeat(hz, fill) + hz + tr)
+	}
+
+	sw := lipgloss.Width(scroll)
+	fill := max(w-hw-sw-8, 0)
+	return style.Render(tl + hz + header + hz + hz + strings.Repeat(hz, fill) + hz + scroll + hz + hz + tr)
+}
+
+func renderBottomBorder(w int, color lipgloss.Color, active bool) string {
+	bl, br, hz := "└", "┘", "─"
+	if active {
+		bl, br, hz = "╚", "╝", "═"
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(
+		bl + strings.Repeat(hz, w-2) + br,
+	)
+}
+
+func renderContentRow(content string, borderColor lipgloss.Color, taskStyle lipgloss.Style, active bool) string {
+	edge := "│"
+	if active {
+		edge = "║"
+	}
+	border := lipgloss.NewStyle().Foreground(borderColor).Render(edge)
+	inner := taskStyle.Render(" " + content + " ")
+	return border + inner + border
+}
+
+func renderEmptyRow(w int, borderColor lipgloss.Color, active bool) string {
+	edge := "│"
+	if active {
+		edge = "║"
+	}
+	border := lipgloss.NewStyle().Foreground(borderColor).Render(edge)
+	return border + strings.Repeat(" ", w-2) + border
+}
+
 // ─── Column rendering ─────────────────────────────────────────────────────
 
 func (m Model) columnWidth(colIdx int) int {
@@ -91,55 +139,68 @@ func (m Model) columnWidth(colIdx int) int {
 
 func (m Model) renderColumn(colIdx int) string {
 	col := m.Board.Columns[colIdx]
-	label := fmt.Sprintf("(%d) %s (%d)", colIdx, col.Status.String(), len(col.Tasks))
+	w := m.columnWidth(colIdx)
+	innerW := w - 4
 
 	active := colIdx == m.Cursor.Col
-	var header string
-	if active {
-		header = SelectedItemStyle(colIdx).Render(label)
-	} else {
-		header = ColumnHeader(colIdx).Render(label)
+	bColor := columnBorderColor(colIdx)
+
+	header := fmt.Sprintf("(%d) %s (%d)", colIdx, col.Status.String(), len(col.Tasks))
+
+	scroll := ""
+	if active && len(col.Tasks) > 0 {
+		scroll = fmt.Sprintf("%d/%d", m.Cursor.Row+1, len(col.Tasks))
 	}
 
-	innerW := m.columnWidth(colIdx) - 4
+	top := renderTopBorder(w, header, scroll, bColor, active)
 
-	rows := []string{header}
+	var rows []string
 	for i, task := range col.Tasks {
-		title := truncate(task.Title, innerW)
+		title := truncate(strings.SplitN(task.Title, "\n", 2)[0], innerW-2)
 		selected := active && i == m.Cursor.Row
 
 		if selected {
-			text := padRight("  "+title, innerW)
-			rows = append(rows, SelectedItemStyle(colIdx).Render(text))
+			rows = append(rows, renderContentRow(
+				padRight("  "+title, innerW), bColor, SelectedItemStyle(colIdx), active))
 		} else {
-			rows = append(rows, NormalTask.Render("  "+title))
+			rows = append(rows, renderContentRow(
+				padRight("  "+title, innerW), bColor, NormalTask, active))
 		}
 
 		if task.Body != "" {
-			bodyLine := truncate(task.Body, innerW)
+			bodyLine := truncate(strings.SplitN(task.Body, "\n", 2)[0], innerW-2)
 			if selected {
-				text := padRight("  "+bodyLine, innerW)
-				rows = append(rows, SelectedBodyStyle(colIdx).Render(text))
+				rows = append(rows, renderContentRow(
+					padRight("  "+bodyLine, innerW), bColor, SelectedBodyStyle(colIdx), active))
 			} else {
-				rows = append(rows, BodyPreview.Render("  "+bodyLine))
+				rows = append(rows, renderContentRow(
+					padRight("  "+bodyLine, innerW), bColor, BodyPreview, active))
 			}
 		}
 
 		if i < len(col.Tasks)-1 {
-			rows = append(rows, "")
+			rows = append(rows, renderEmptyRow(w, bColor, active))
 		}
 	}
 
 	if len(col.Tasks) == 0 {
 		if active {
-			rows = append(rows, SelectedItemStyle(colIdx).Render(padRight("  (no tasks)", innerW)))
+			rows = append(rows, renderContentRow(
+				padRight("  (no tasks)", innerW), bColor, SelectedItemStyle(colIdx), active))
 		} else {
-			rows = append(rows, EmptyColumn.Render("  (no tasks)"))
+			rows = append(rows, renderContentRow(
+				padRight("  (no tasks)", innerW), bColor, EmptyColumn, active))
 		}
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return ColumnBorder(colIdx, active).Width(m.columnWidth(colIdx)).Render(content)
+	bottom := renderBottomBorder(w, bColor, active)
+
+	allRows := make([]string, 0, len(rows)+2)
+	allRows = append(allRows, top)
+	allRows = append(allRows, rows...)
+	allRows = append(allRows, bottom)
+
+	return lipgloss.JoinVertical(lipgloss.Left, allRows...)
 }
 
 // ─── Task detail ──────────────────────────────────────────────────────────
@@ -247,5 +308,8 @@ func truncate(s string, maxLen int) string {
 	if len(runes) <= maxLen {
 		return s
 	}
-	return string(runes[:maxLen]) + "..."
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
