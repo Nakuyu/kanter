@@ -10,12 +10,6 @@ var columnColours = [3]lipgloss.Color{
 	StatusDone:  "#3FB950",
 }
 
-var columnTitles = [3]string{
-	StatusTodo:  "TODO",
-	StatusDoing: "DOING",
-	StatusDone:  "DONE",
-}
-
 var (
 	SelectedItem = lipgloss.NewStyle().
 			Background(lipgloss.Color("#1F6FEB")).
@@ -35,6 +29,21 @@ var (
 	HelpBarKey = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#58A6FF")).
 			Bold(true)
+
+	PromptStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#58A6FF")).
+			Bold(true)
+
+	ConfirmStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#D29922")).
+			Bold(true)
+
+	ErrorBar = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F85149")).
+			Bold(true)
+
+	BodyPreview = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#484F58"))
 )
 
 func ColumnBorder(colIdx int) lipgloss.Style {
@@ -45,9 +54,8 @@ func ColumnBorder(colIdx int) lipgloss.Style {
 		Width(30)
 }
 
-func ColumnHeader(colIdx int) string {
+func ColumnHeader(colIdx int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Bold(true).
-		Foreground(columnColours[colIdx]).
-		Render(columnTitles[colIdx])
+		Foreground(columnColours[colIdx])
 }
