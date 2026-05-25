@@ -1,9 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -16,23 +13,23 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Up):
-		m.moveCursorUp()
+		m = m.moveCursorUp()
 	case key.Matches(msg, m.keys.Down):
-		m.moveCursorDown()
+		m = m.moveCursorDown()
 	case key.Matches(msg, m.keys.Left):
-		m.moveCursorLeft()
+		m = m.moveCursorLeft()
 	case key.Matches(msg, m.keys.Right):
-		m.moveCursorRight()
+		m = m.moveCursorRight()
 
 	case msg.String() == "0":
 		m.Cursor.Col = 0
-		m.clampRow()
+		m = m.clampRow()
 	case msg.String() == "1":
 		m.Cursor.Col = 1
-		m.clampRow()
+		m = m.clampRow()
 	case msg.String() == "2":
 		m.Cursor.Col = 2
-		m.clampRow()
+		m = m.clampRow()
 
 	case key.Matches(msg, m.keys.Add):
 		m = m.enterAddMode()
@@ -50,7 +47,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, m.keys.Enter):
-		m.moveCurrentTask()
+		m = m.moveCurrentTask()
 		return m, saveBoardCmd(m)
 	}
 
@@ -80,7 +77,6 @@ func (m Model) handleAddingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
 	}
-
 	if m.AddStage == 0 {
 		switch {
 		case key.Matches(msg, m.keys.Deny):
@@ -89,19 +85,13 @@ func (m Model) handleAddingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Confirm):
 			return m.handleAddConfirm()
 		}
-		var cmd tea.Cmd
-		m.TitleInput, cmd = m.TitleInput.Update(msg)
-		return m, cmd
+	} else {
+		// Body stage: esc = save, enter = newline (textarea handles it)
+		if key.Matches(msg, m.keys.Deny) {
+			return m.handleAddConfirm()
+		}
 	}
-
-	// Body stage: esc = save, enter = newline (textarea handles it)
-	if key.Matches(msg, m.keys.Deny) {
-		return m.handleAddConfirm()
-	}
-
-	var cmd tea.Cmd
-	m.BodyTextarea, cmd = m.BodyTextarea.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) handleAddConfirm() (Model, tea.Cmd) {
@@ -121,7 +111,7 @@ func (m Model) handleAddConfirm() (Model, tea.Cmd) {
 	}
 
 	task := Task{
-		ID:     fmt.Sprintf("%x", time.Now().UnixNano()),
+		ID:     newID(),
 		Title:  title,
 		Body:   m.BodyTextarea.Value(),
 		Status: StatusTodo,
@@ -165,19 +155,12 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Confirm):
 			return m.handleEditConfirm()
 		}
-		var cmd tea.Cmd
-		m.TitleInput, cmd = m.TitleInput.Update(msg)
-		return m, cmd
+	} else {
+		if key.Matches(msg, m.keys.Deny) {
+			return m.handleEditConfirm()
+		}
 	}
-
-	// Body stage: esc = save, enter = newline (textarea handles it)
-	if key.Matches(msg, m.keys.Deny) {
-		return m.handleEditConfirm()
-	}
-
-	var cmd tea.Cmd
-	m.BodyTextarea, cmd = m.BodyTextarea.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) handleEditConfirm() (Model, tea.Cmd) {
@@ -228,58 +211,60 @@ func (m Model) deleteCurrentTask() Model {
 	if m.Cursor.Row < len(col.Tasks) {
 		col.Tasks = append(col.Tasks[:m.Cursor.Row], col.Tasks[m.Cursor.Row+1:]...)
 	}
-	m.clampRow()
-	return m
+	return m.clampRow()
 }
 
 // ─── Cursor movement ──────────────────────────────────────────────────────
 
-func (m *Model) moveCursorUp() {
+func (m Model) moveCursorUp() Model {
 	if m.Cursor.Row > 0 {
 		m.Cursor.Row--
 	}
+	return m
 }
 
-func (m *Model) moveCursorDown() {
+func (m Model) moveCursorDown() Model {
 	maxRow := len(m.Board.Columns[m.Cursor.Col].Tasks) - 1
 	if m.Cursor.Row < maxRow {
 		m.Cursor.Row++
 	}
+	return m
 }
 
-func (m *Model) moveCursorLeft() {
+func (m Model) moveCursorLeft() Model {
 	if m.Cursor.Col > 0 {
 		m.Cursor.Col--
 	}
-	m.clampRow()
+	return m.clampRow()
 }
 
-func (m *Model) moveCursorRight() {
+func (m Model) moveCursorRight() Model {
 	if m.Cursor.Col < len(m.Board.Columns)-1 {
 		m.Cursor.Col++
 	}
-	m.clampRow()
+	return m.clampRow()
 }
 
-func (m *Model) clampRow() {
+func (m Model) clampRow() Model {
 	maxRow := len(m.Board.Columns[m.Cursor.Col].Tasks) - 1
 	if maxRow < 0 {
 		m.Cursor.Row = 0
-		return
+		return m
 	}
 	if m.Cursor.Row > maxRow {
 		m.Cursor.Row = maxRow
 	}
+	return m
 }
 
-func (m *Model) moveCurrentTask() {
+func (m Model) moveCurrentTask() Model {
 	if m.Cursor.Col >= len(m.Board.Columns)-1 {
-		return
+		return m
 	}
 
 	col := &m.Board.Columns[m.Cursor.Col]
 	if len(col.Tasks) == 0 || m.Cursor.Row >= len(col.Tasks) {
-		return
+		return m
 	}
 
 	task := col.Tasks[m.Cursor.Row]
@@ -292,5 +277,5 @@ func (m *Model) moveCurrentTask() {
 		m.Board.Columns[newStatus].Tasks, task,
 	)
 
-	m.clampRow()
+	return m.clampRow()
 }

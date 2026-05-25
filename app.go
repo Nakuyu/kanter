@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/charmbracelet/bubbles/help"
+	"crypto/rand"
+	"encoding/hex"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -39,8 +42,8 @@ type Task struct {
 }
 
 type Column struct {
-	Status Status  `json:"status"`
-	Tasks  []Task  `json:"tasks"`
+	Status Status `json:"status"`
+	Tasks  []Task `json:"tasks"`
 }
 
 type Board struct {
@@ -76,8 +79,11 @@ type Model struct {
 
 	SavePath string
 
+	Viewport      viewport.Model
+	ViewportReady bool
+	ColWidths     [3]int
+
 	keys keyMap
-	help help.Model
 }
 
 // ─── Key bindings ─────────────────────────────────────────────────────────
@@ -172,9 +178,12 @@ func NewModel() Model {
 	ta.SetHeight(4)
 	ta.ShowLineNumbers = false
 
+	vp := viewport.New(0, 0)
+	vp.KeyMap = viewport.KeyMap{}
+
 	savePath, _ := boardPath()
 
-	return Model{
+	m := Model{
 		Board: Board{
 			Columns: [3]Column{
 				{Status: StatusTodo, Tasks: []Task{}},
@@ -188,9 +197,11 @@ func NewModel() Model {
 		BodyTextarea: ta,
 		AddStage:     0,
 		SavePath:     savePath,
-		keys:         defaultKeyMap(),
-		help:         help.New(),
+		Viewport:     vp,
+		keys: defaultKeyMap(),
 	}
+	m = m.recalcColWidths()
+	return m
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────────
@@ -241,29 +252,55 @@ func (m Model) Init() tea.Cmd {
 // ─── Update ───────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	// Pass ALL messages to the active sub-model so it receives TickMsg
+	if m.Mode == ModeAdding || m.Mode == ModeEditing {
+		if m.AddStage == 0 {
+			m.TitleInput, cmd = m.TitleInput.Update(msg)
+			cmds = append(cmds, cmd)
+		} else {
+			m.BodyTextarea, cmd = m.BodyTextarea.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		return m, nil
+		footerLines := 3
+		if m.Err != nil {
+			footerLines++
+		}
+		vpHeight := max(m.Height-footerLines, 5)
+		if !m.ViewportReady {
+			m.Viewport = viewport.New(msg.Width, vpHeight)
+			m.Viewport.KeyMap = viewport.KeyMap{}
+			m.ViewportReady = true
+		} else {
+			m.Viewport.Width = msg.Width
+			m.Viewport.Height = vpHeight
+		}
 
 	case tea.KeyMsg:
 		m.Err = nil
-		return m.handleKeyMsg(msg)
+		m, cmd = m.handleKeyMsg(msg)
+		cmds = append(cmds, cmd)
+		m = m.recalcColWidths()
 
 	case loadResultMsg:
 		m.Board = msg.board
-		return m, nil
+		m = m.recalcColWidths()
 
 	case loadFirstRunMsg:
-		return m, nil
 
 	case errMsg:
 		m.Err = msg.err
-		return m, nil
 	}
 
-	return m, nil
+	return m, tea.Batch(cmds...)
 }
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -278,4 +315,31 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handleConfirmDeleteMode(msg)
 	}
 	return m, nil
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+func (m Model) recalcColWidths() Model {
+	for i := range m.ColWidths {
+		w := 30
+		for _, t := range m.Board.Columns[i].Tasks {
+			tw := len([]rune(t.Title)) + 4
+			if tw > w {
+				w = tw
+			}
+		}
+		if w > maxColWidth {
+			w = maxColWidth
+		}
+		m.ColWidths[i] = w
+	}
+	return m
+}
+
+func newID() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		b = []byte{0, 0, 0, 0}
+	}
+	return hex.EncodeToString(b)
 }
