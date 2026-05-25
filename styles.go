@@ -10,12 +10,13 @@ var columnColours = [3]lipgloss.Color{
 	StatusDone:  "#3FB950",
 }
 
-var (
-	SelectedItem = lipgloss.NewStyle().
-			Background(lipgloss.Color("#1F6FEB")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Bold(true)
+var columnSelectionBg = [3]lipgloss.Color{
+	StatusTodo:  "#174E9B",
+	StatusDoing: "#7B5E00",
+	StatusDone:  "#1A6B2F",
+}
 
+var (
 	NormalTask = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#C9D1D9"))
 
@@ -25,10 +26,6 @@ var (
 
 	HelpBar = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8B949E"))
-
-	HelpBarKey = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#58A6FF")).
-			Bold(true)
 
 	PromptStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#58A6FF")).
@@ -44,12 +41,32 @@ var (
 
 	BodyPreview = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#484F58"))
+
+	Divider = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#21262D"))
 )
 
-func ColumnBorder(colIdx int) lipgloss.Style {
+func SelectedItemStyle(colIdx int) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Background(columnSelectionBg[colIdx]).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Bold(true)
+}
+
+func SelectedBodyStyle(colIdx int) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Background(columnSelectionBg[colIdx]).
+		Foreground(lipgloss.Color("#8B949E"))
+}
+
+func ColumnBorder(colIdx int, active bool) lipgloss.Style {
+	color := columnColours[colIdx]
+	if !active {
+		color = "#21262D"
+	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(columnColours[colIdx]).
+		BorderForeground(color).
 		Padding(0, 1).
 		Width(30)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -24,9 +25,12 @@ func (m Model) View() string {
 }
 
 func (m Model) footerView() string {
-	saveLine := HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath))
-
-	parts := []string{m.helpView(), saveLine}
+	var parts []string
+	if m.Width > 0 {
+		parts = append(parts, Divider.Render(strings.Repeat("─", m.Width)))
+	}
+	parts = append(parts, m.helpView())
+	parts = append(parts, HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath)))
 	if m.Err != nil {
 		parts = append(parts, ErrorBar.Render(fmt.Sprintf("Error: %v", m.Err)))
 	}
@@ -45,6 +49,9 @@ func (m Model) renderContent() string {
 
 	detail := m.taskDetailView()
 	if detail != "" {
+		if m.Width > 0 {
+			parts = append(parts, Divider.Render(strings.Repeat("─", m.Width)))
+		}
 		parts = append(parts, detail)
 	}
 
@@ -84,41 +91,55 @@ func (m Model) columnWidth(colIdx int) int {
 
 func (m Model) renderColumn(colIdx int) string {
 	col := m.Board.Columns[colIdx]
-	label := fmt.Sprintf("(%d) %s", colIdx, col.Status.String())
+	label := fmt.Sprintf("(%d) %s (%d)", colIdx, col.Status.String(), len(col.Tasks))
 
+	active := colIdx == m.Cursor.Col
 	var header string
-	if colIdx == m.Cursor.Col {
-		header = SelectedItem.Render(label)
+	if active {
+		header = SelectedItemStyle(colIdx).Render(label)
 	} else {
 		header = ColumnHeader(colIdx).Render(label)
 	}
 
 	innerW := m.columnWidth(colIdx) - 4
-	maxTitle := min(innerW, 36)
 
 	rows := []string{header}
 	for i, task := range col.Tasks {
-		prefix := "  "
-		style := NormalTask
-		if colIdx == m.Cursor.Col && i == m.Cursor.Row {
-			prefix = "> "
-			style = SelectedItem
+		title := truncate(task.Title, innerW)
+		selected := active && i == m.Cursor.Row
+
+		if selected {
+			text := padRight("  "+title, innerW)
+			rows = append(rows, SelectedItemStyle(colIdx).Render(text))
+		} else {
+			rows = append(rows, NormalTask.Render("  "+title))
 		}
-		title := truncate(task.Title, maxTitle)
-		row := style.Render(prefix + title)
+
 		if task.Body != "" {
 			bodyLine := truncate(task.Body, innerW)
-			row += "\n" + BodyPreview.Render("  " + bodyLine)
+			if selected {
+				text := padRight("  "+bodyLine, innerW)
+				rows = append(rows, SelectedBodyStyle(colIdx).Render(text))
+			} else {
+				rows = append(rows, BodyPreview.Render("  "+bodyLine))
+			}
 		}
-		rows = append(rows, row)
+
+		if i < len(col.Tasks)-1 {
+			rows = append(rows, "")
+		}
 	}
 
 	if len(col.Tasks) == 0 {
-		rows = append(rows, EmptyColumn.Render("(empty)"))
+		if active {
+			rows = append(rows, SelectedItemStyle(colIdx).Render(padRight("  (no tasks)", innerW)))
+		} else {
+			rows = append(rows, EmptyColumn.Render("  (no tasks)"))
+		}
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return ColumnBorder(colIdx).Width(m.columnWidth(colIdx)).Render(content)
+	return ColumnBorder(colIdx, active).Width(m.columnWidth(colIdx)).Render(content)
 }
 
 // ─── Task detail ──────────────────────────────────────────────────────────
@@ -133,7 +154,7 @@ func (m Model) taskDetailView() string {
 	}
 	task := col.Tasks[m.Cursor.Row]
 
-	title := SelectedItem.Render(" " + task.Title + " ")
+	title := SelectedItemStyle(m.Cursor.Col).Render(" " + task.Title + " ")
 	body := task.Body
 	if body == "" {
 		body = "(no description)"
@@ -184,7 +205,9 @@ func (m Model) cursorLine() int {
 				if t.Body != "" {
 					line++ // body preview
 				}
+				line++ // spacer between tasks
 			}
+			line-- // no trailing spacer
 		}
 	}
 	col := m.Board.Columns[m.Cursor.Col]
@@ -194,6 +217,7 @@ func (m Model) cursorLine() int {
 		if col.Tasks[i].Body != "" {
 			line++ // body preview
 		}
+		line++ // spacer between tasks
 	}
 	return line
 }
@@ -209,6 +233,14 @@ func (m Model) scrollOffset() int {
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────
+
+func padRight(s string, w int) string {
+	n := lipgloss.Width(s)
+	if n >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-n)
+}
 
 func truncate(s string, maxLen int) string {
 	runes := []rune(s)
