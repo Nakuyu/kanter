@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -66,6 +67,14 @@ const (
 	ModeConfirmDelete
 )
 
+type MsgType int
+
+const (
+	MsgInfo MsgType = iota
+	MsgSuccess
+	MsgError
+)
+
 type Model struct {
 	Board  Board
 	Cursor Cursor
@@ -77,7 +86,9 @@ type Model struct {
 
 	Width  int
 	Height int
-	Err    error
+
+	StatusMsg    string
+	StatusMsgType MsgType
 
 	SavePath string
 
@@ -272,10 +283,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		footerLines := 3
-		if m.Err != nil {
-			footerLines++
-		}
+		footerLines := 4
 		vpHeight := max(m.Height-footerLines, 5)
 		if !m.ViewportReady {
 			m.Viewport = viewport.New(msg.Width, vpHeight)
@@ -287,7 +295,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		m.Err = nil
+		m.StatusMsg = ""
 		m, cmd = m.handleKeyMsg(msg)
 		cmds = append(cmds, cmd)
 		m = m.recalcColWidths()
@@ -307,7 +315,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loadFirstRunMsg:
 
 	case errMsg:
-		m.Err = msg.err
+		m.StatusMsg = fmt.Sprintf("Error: %v", msg.err)
+		m.StatusMsgType = MsgError
 	}
 
 	return m, tea.Batch(cmds...)

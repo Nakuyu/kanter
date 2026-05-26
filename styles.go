@@ -35,12 +35,18 @@ var (
 			Foreground(lipgloss.Color("#D29922")).
 			Bold(true)
 
-	ErrorBar = lipgloss.NewStyle().
+	BodyPreview = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#484F58"))
+
+	StatusSuccess = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#3FB950"))
+
+	StatusError = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#F85149")).
 			Bold(true)
 
-	BodyPreview = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#484F58"))
+	StatusInfo = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#8B949E"))
 
 	Divider = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#21262D"))

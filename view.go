@@ -28,12 +28,30 @@ func (m Model) footerView() string {
 	if m.Width > 0 {
 		parts = append(parts, Divider.Render(strings.Repeat("─", m.Width)))
 	}
+	parts = append(parts, m.statusView())
 	parts = append(parts, m.helpView())
 	parts = append(parts, HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath)))
-	if m.Err != nil {
-		parts = append(parts, ErrorBar.Render(fmt.Sprintf("Error: %v", m.Err)))
-	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m Model) statusView() string {
+	if m.StatusMsg == "" {
+		return ""
+	}
+	var style lipgloss.Style
+	switch m.StatusMsgType {
+	case MsgSuccess:
+		style = StatusSuccess
+	case MsgError:
+		style = StatusError
+	default:
+		style = StatusInfo
+	}
+	w := m.Width
+	if w <= 0 {
+		w = 80
+	}
+	return style.Render(padRight("  "+m.StatusMsg, w))
 }
 
 func (m Model) renderContent() string {

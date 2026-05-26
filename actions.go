@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -121,6 +122,8 @@ func (m Model) handleAddConfirm() (Model, tea.Cmd) {
 	}
 	m.Board.Columns[0].Tasks = append(m.Board.Columns[0].Tasks, task)
 
+	m.StatusMsg = "Task created"
+	m.StatusMsgType = MsgSuccess
 	m = m.cancelAddMode()
 	return m, saveBoardCmd(m)
 }
@@ -186,6 +189,8 @@ func (m Model) handleEditConfirm() (Model, tea.Cmd) {
 	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].Body = m.BodyTextarea.Value()
 	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].UpdatedAt = time.Now()
 
+	m.StatusMsg = "Task saved"
+	m.StatusMsgType = MsgSuccess
 	m = m.cancelEditMode()
 	return m, saveBoardCmd(m)
 }
@@ -198,6 +203,8 @@ func (m Model) handleConfirmDeleteMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Confirm), msg.String() == "y":
+		m.StatusMsg = "Task deleted"
+		m.StatusMsgType = MsgSuccess
 		m = m.deleteCurrentTask()
 		m.Mode = ModeNormal
 		return m, saveBoardCmd(m)
@@ -275,6 +282,9 @@ func (m Model) moveCurrentTask() Model {
 	newStatus := Status(m.Cursor.Col + 1)
 	task.Status = newStatus
 	task.UpdatedAt = time.Now()
+
+	m.StatusMsg = fmt.Sprintf("→ Moved to %s", newStatus)
+	m.StatusMsgType = MsgInfo
 
 	col.Tasks = append(col.Tasks[:m.Cursor.Row], col.Tasks[m.Cursor.Row+1:]...)
 
