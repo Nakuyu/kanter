@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -209,22 +210,94 @@ func (m Model) taskDetailView() string {
 	if m.Mode != ModeNormal {
 		return ""
 	}
+
+	w := m.Width
+	if w <= 0 {
+		w = 80
+	}
+
+	bColor := columnBorderColor(m.Cursor.Col)
+
 	col := m.Board.Columns[m.Cursor.Col]
 	if len(col.Tasks) == 0 || m.Cursor.Row >= len(col.Tasks) {
-		return ""
+		return renderDetailPanel("Task Detail", "", "", "", w, bColor)
 	}
-	task := col.Tasks[m.Cursor.Row]
 
-	title := SelectedItemStyle(m.Cursor.Col).Render(" " + task.Title + " ")
-	body := task.Body
-	if body == "" {
-		body = "(no description)"
+	task := col.Tasks[m.Cursor.Row]
+	return renderDetailPanel(task.Title, task.Body,
+		task.Status.String(), relativeTime(task.UpdatedAt),
+		w, bColor)
+}
+
+func renderDetailPanel(title, body, status, updated string, w int, color lipgloss.Color) string {
+	innerW := w - 4
+
+	displayTitle := truncate(title, max(w-8, 10))
+	top := renderTopBorder(w, displayTitle, "", color, true)
+
+	var rows []string
+
+	if body != "" {
+		lines := strings.Split(body, "\n")
+		for _, line := range lines {
+			truncated := truncate(line, innerW-2)
+			rows = append(rows, renderContentRow(
+				padRight("  "+truncated, innerW), color, NormalTask, true))
+		}
+	} else if title != "" {
+		rows = append(rows, renderContentRow(
+			padRight("  (no description)", innerW), color, BodyPreview, true))
+	} else {
+		rows = append(rows, renderContentRow(
+			padRight("  (no task selected)", innerW), color, BodyPreview, true))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left,
-		"",
-		title,
-		BodyPreview.Render(body),
-	)
+
+	if status != "" {
+		meta := fmt.Sprintf("  Status: %s    Updated: %s", status, updated)
+		rows = append(rows, renderEmptyRow(w, color, true))
+		rows = append(rows, renderContentRow(
+			padRight(meta, innerW), color, BodyPreview, true))
+	}
+
+	bottom := renderBottomBorder(w, color, true)
+
+	allRows := make([]string, 0, len(rows)+2)
+	allRows = append(allRows, top)
+	allRows = append(allRows, rows...)
+	allRows = append(allRows, bottom)
+
+	return lipgloss.JoinVertical(lipgloss.Left, allRows...)
+}
+
+func relativeTime(t time.Time) string {
+	if t.IsZero() {
+		return "unknown"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", h)
+	case d < 7*24*time.Hour:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	default:
+		return t.Format("Jan 2, 2006")
+	}
 }
 
 // ─── Help bar ─────────────────────────────────────────────────────────────

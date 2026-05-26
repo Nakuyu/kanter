@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -35,10 +36,11 @@ func (s Status) String() string {
 }
 
 type Task struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Body   string `json:"body,omitempty"`
-	Status Status `json:"status"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body,omitempty"`
+	Status    Status    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 type Column struct {
@@ -198,7 +200,7 @@ func NewModel() Model {
 		AddStage:     0,
 		SavePath:     savePath,
 		Viewport:     vp,
-		keys: defaultKeyMap(),
+		keys:         defaultKeyMap(),
 	}
 	m = m.recalcColWidths()
 	return m
@@ -292,6 +294,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadResultMsg:
 		m.Board = msg.board
+		now := time.Now()
+		for ci := range m.Board.Columns {
+			for ti := range m.Board.Columns[ci].Tasks {
+				if m.Board.Columns[ci].Tasks[ti].UpdatedAt.IsZero() {
+					m.Board.Columns[ci].Tasks[ti].UpdatedAt = now
+				}
+			}
+		}
 		m = m.recalcColWidths()
 
 	case loadFirstRunMsg:
@@ -317,7 +327,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────── ch────
 
 func (m Model) recalcColWidths() Model {
 	for i := range m.ColWidths {

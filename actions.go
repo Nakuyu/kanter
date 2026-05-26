@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -111,10 +113,11 @@ func (m Model) handleAddConfirm() (Model, tea.Cmd) {
 	}
 
 	task := Task{
-		ID:     newID(),
-		Title:  title,
-		Body:   m.BodyTextarea.Value(),
-		Status: StatusTodo,
+		ID:        newID(),
+		Title:     title,
+		Body:      m.BodyTextarea.Value(),
+		Status:    StatusTodo,
+		UpdatedAt: time.Now(),
 	}
 	m.Board.Columns[0].Tasks = append(m.Board.Columns[0].Tasks, task)
 
@@ -181,6 +184,7 @@ func (m Model) handleEditConfirm() (Model, tea.Cmd) {
 
 	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].Title = title
 	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].Body = m.BodyTextarea.Value()
+	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].UpdatedAt = time.Now()
 
 	m = m.cancelEditMode()
 	return m, saveBoardCmd(m)
@@ -270,6 +274,7 @@ func (m Model) moveCurrentTask() Model {
 	task := col.Tasks[m.Cursor.Row]
 	newStatus := Status(m.Cursor.Col + 1)
 	task.Status = newStatus
+	task.UpdatedAt = time.Now()
 
 	col.Tasks = append(col.Tasks[:m.Cursor.Row], col.Tasks[m.Cursor.Row+1:]...)
 
