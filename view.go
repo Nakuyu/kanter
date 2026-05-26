@@ -324,7 +324,7 @@ func (m Model) helpView() string {
 	switch m.Mode {
 	case ModeNormal:
 		return HelpBar.Render(
-			"j/k navigate  tab/h/l column  a add  e edit  d delete  enter→  shift+enter← 0/1/2 jump  q quit",
+			"j/k navigate  tab/h/l column  a add  e edit  d delete  enter→  backspace← 0/1/2 jump  q quit",
 		)
 	case ModeAdding:
 		return HelpBar.Render(

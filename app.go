@@ -149,8 +149,8 @@ func defaultKeyMap() keyMap {
 			key.WithHelp("enter", "move task"),
 		),
 		ShiftEnter: key.NewBinding(
-			key.WithKeys("shift+enter"),
-			key.WithHelp("shift+enter", "move back"),
+			key.WithKeys("backspace"),
+			key.WithHelp("backspace", "move back"),
 		),
 		Add: key.NewBinding(
 			key.WithKeys("a"),
