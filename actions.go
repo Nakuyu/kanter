@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -34,6 +35,11 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.Cursor.Col = 2
 		m = m.clampRow()
 
+	case key.Matches(msg, m.keys.Tab):
+		m = m.moveCursorRight()
+	case key.Matches(msg, m.keys.ShiftTab):
+		m = m.moveCursorLeft()
+
 	case key.Matches(msg, m.keys.Add):
 		m = m.enterAddMode()
 		return m, nil
@@ -49,8 +55,12 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.Mode = ModeConfirmDelete
 		}
 
+	case key.Matches(msg, m.keys.ShiftEnter):
+		m = m.moveTask(-1)
+		return m, saveBoardCmd(m)
+
 	case key.Matches(msg, m.keys.Enter):
-		m = m.moveCurrentTask()
+		m = m.moveTask(+1)
 		return m, saveBoardCmd(m)
 	}
 
@@ -80,20 +90,29 @@ func (m Model) handleAddingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
 	}
+
 	if m.AddStage == 0 {
 		switch {
 		case key.Matches(msg, m.keys.Deny):
 			m = m.cancelAddMode()
 			return m, nil
-		case key.Matches(msg, m.keys.Confirm):
+		case key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.Tab):
 			return m.handleAddConfirm()
 		}
-	} else {
-		// Body stage: esc = save, enter = newline (textarea handles it)
-		if key.Matches(msg, m.keys.Deny) {
-			return m.handleAddConfirm()
-		}
+		return m, nil
 	}
+	switch {
+	case key.Matches(msg, m.keys.Deny):
+		m = m.cancelAddMode()
+		return m, nil
+	case msg.Alt && msg.Type == tea.KeyEnter:
+		return m.handleAddConfirm()
+	case key.Matches(msg, m.keys.ShiftTab):
+		m.AddStage = 0
+		m.BodyTextarea.Blur()
+		return m, m.TitleInput.Focus()
+	}
+
 	return m, nil
 }
 
@@ -108,7 +127,7 @@ func (m Model) handleAddConfirm() (Model, tea.Cmd) {
 		return m, m.BodyTextarea.Focus()
 	}
 
-	title := m.TitleInput.Value()
+	title := strings.TrimSpace(m.TitleInput.Value())
 	if title == "" {
 		return m, nil
 	}
@@ -158,14 +177,24 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Deny):
 			m = m.cancelEditMode()
 			return m, nil
-		case key.Matches(msg, m.keys.Confirm):
+		case key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.Tab):
 			return m.handleEditConfirm()
 		}
-	} else {
-		if key.Matches(msg, m.keys.Deny) {
-			return m.handleEditConfirm()
-		}
+		return m, nil
 	}
+
+	switch {
+	case key.Matches(msg, m.keys.Deny):
+		m = m.cancelEditMode()
+		return m, nil
+	case msg.Alt && msg.Type == tea.KeyEnter:
+		return m.handleEditConfirm()
+	case key.Matches(msg, m.keys.ShiftTab):
+		m.AddStage = 0
+		m.BodyTextarea.Blur()
+		return m, m.TitleInput.Focus()
+	}
+
 	return m, nil
 }
 
@@ -180,7 +209,7 @@ func (m Model) handleEditConfirm() (Model, tea.Cmd) {
 		return m, m.BodyTextarea.Focus()
 	}
 
-	title := m.TitleInput.Value()
+	title := strings.TrimSpace(m.TitleInput.Value())
 	if title == "" {
 		return m, nil
 	}
@@ -268,8 +297,9 @@ func (m Model) clampRow() Model {
 	return m
 }
 
-func (m Model) moveCurrentTask() Model {
-	if m.Cursor.Col >= len(m.Board.Columns)-1 {
+func (m Model) moveTask(delta int) Model {
+	target := m.Cursor.Col + delta
+	if target < 0 || target >= len(m.Board.Columns) {
 		return m
 	}
 
@@ -279,17 +309,20 @@ func (m Model) moveCurrentTask() Model {
 	}
 
 	task := col.Tasks[m.Cursor.Row]
-	newStatus := Status(m.Cursor.Col + 1)
+	newStatus := Status(target)
 	task.Status = newStatus
 	task.UpdatedAt = time.Now()
 
-	m.StatusMsg = fmt.Sprintf("→ Moved to %s", newStatus)
+	arrow := "→"
+	if delta < 0 {
+		arrow = "←"
+	}
+	m.StatusMsg = fmt.Sprintf("%s Moved to %s", arrow, newStatus)
 	m.StatusMsgType = MsgInfo
 
 	col.Tasks = append(col.Tasks[:m.Cursor.Row], col.Tasks[m.Cursor.Row+1:]...)
-
-	m.Board.Columns[newStatus].Tasks = append(
-		m.Board.Columns[newStatus].Tasks, task,
+	m.Board.Columns[target].Tasks = append(
+		m.Board.Columns[target].Tasks, task,
 	)
 
 	return m.clampRow()

@@ -87,7 +87,7 @@ type Model struct {
 	Width  int
 	Height int
 
-	StatusMsg    string
+	StatusMsg     string
 	StatusMsgType MsgType
 
 	SavePath string
@@ -102,17 +102,20 @@ type Model struct {
 // ─── Key bindings ─────────────────────────────────────────────────────────
 
 type keyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Left    key.Binding
-	Right   key.Binding
-	Enter   key.Binding
-	Add     key.Binding
-	Edit    key.Binding
-	Delete  key.Binding
-	Confirm key.Binding
-	Deny    key.Binding
-	Quit    key.Binding
+	Up         key.Binding
+	Down       key.Binding
+	Left       key.Binding
+	Right      key.Binding
+	Enter      key.Binding
+	ShiftEnter key.Binding
+	Tab        key.Binding
+	ShiftTab   key.Binding
+	Add        key.Binding
+	Edit       key.Binding
+	Delete     key.Binding
+	Confirm    key.Binding
+	Deny       key.Binding
+	Quit       key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -133,9 +136,21 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("l", "right"),
 			key.WithHelp("", ""),
 		),
+		Tab: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "next column"),
+		),
+		ShiftTab: key.NewBinding(
+			key.WithKeys("shift+tab"),
+			key.WithHelp("shift+tab", "prev column"),
+		),
 		Enter: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "move task"),
+		),
+		ShiftEnter: key.NewBinding(
+			key.WithKeys("shift+enter"),
+			key.WithHelp("shift+enter", "move back"),
 		),
 		Add: key.NewBinding(
 			key.WithKeys("a"),
