@@ -8,35 +8,41 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const maxColWidth = 40
-
 func (m Model) View() string {
-	footer := m.footerView()
-
 	if !m.ViewportReady {
-		return m.renderContent() + "\n" + footer
+		return m.renderBoardContent() + "\n" + m.renderFooter()
 	}
 
-	vp := m.Viewport
-	vp.SetContent(m.renderContent())
-	vp.SetYOffset(m.scrollOffset())
-	return vp.View() + "\n" + footer
-}
+	m.Viewport.SetContent(m.renderBoardContent())
+	m.Viewport.SetYOffset(m.scrollOffset())
 
-func (m Model) footerView() string {
-	var parts []string
-	if m.Width > 0 {
-		parts = append(parts, Divider.Render(strings.Repeat("─", m.Width)))
+	parts := []string{m.Viewport.View()}
+
+	if m.Layout.DetailMode != DetailHidden {
+		parts = append(parts, m.renderDetailOutside())
 	}
-	parts = append(parts, m.statusView())
-	parts = append(parts, m.helpView())
-	parts = append(parts, HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath)))
+
+	parts = append(parts, m.renderFooter())
+
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-func (m Model) statusView() string {
+func (m Model) renderFooter() string {
+	w := m.Width
+	divider := Divider.Render(strings.Repeat("─", w))
+	status := m.statusLine()
+	help := m.helpView()
+	path := HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath))
+	return lipgloss.JoinVertical(lipgloss.Left, divider, status, help, path)
+}
+
+func (m Model) statusLine() string {
+	w := m.Width
+	if w <= 0 {
+		w = 80
+	}
 	if m.StatusMsg == "" {
-		return ""
+		return strings.Repeat(" ", w)
 	}
 	var style lipgloss.Style
 	switch m.StatusMsgType {
@@ -47,30 +53,21 @@ func (m Model) statusView() string {
 	default:
 		style = StatusInfo
 	}
-	w := m.Width
-	if w <= 0 {
-		w = 80
-	}
 	return style.Render(padRight("  "+m.StatusMsg, w))
 }
 
-func (m Model) renderContent() string {
-	cols := make([]string, 3)
-	for i := range cols {
-		cols[i] = m.renderColumn(i)
+func (m Model) renderBoardContent() string {
+	var cols []string
+	for i := range m.Board.Columns {
+		if m.Layout.ColWidths[i] == 0 {
+			continue
+		}
+		cols = append(cols, m.renderColumn(i))
 	}
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 
 	var parts []string
 	parts = append(parts, board)
-
-	detail := m.taskDetailView()
-	if detail != "" {
-		if m.Width > 0 {
-			parts = append(parts, Divider.Render(strings.Repeat("─", m.Width)))
-		}
-		parts = append(parts, detail)
-	}
 
 	var modeOverlay string
 	switch m.Mode {
@@ -99,8 +96,6 @@ func (m Model) renderContent() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
-
-// ─── Border rendering ─────────────────────────────────────────────────────
 
 func renderTopBorder(w int, header, scroll string, color lipgloss.Color, active bool) string {
 	hw := lipgloss.Width(header)
@@ -150,10 +145,8 @@ func renderEmptyRow(w int, borderColor lipgloss.Color, active bool) string {
 	return border + strings.Repeat(" ", w-2) + border
 }
 
-// ─── Column rendering ─────────────────────────────────────────────────────
-
 func (m Model) columnWidth(colIdx int) int {
-	return m.ColWidths[colIdx]
+	return m.Layout.ColWidths[colIdx]
 }
 
 func (m Model) renderColumn(colIdx int) string {
@@ -222,32 +215,23 @@ func (m Model) renderColumn(colIdx int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, allRows...)
 }
 
-// ─── Task detail ──────────────────────────────────────────────────────────
-
-func (m Model) taskDetailView() string {
-	if m.Mode != ModeNormal {
-		return ""
-	}
-
+func (m Model) renderDetailOutside() string {
 	w := m.Width
-	if w <= 0 {
-		w = 80
-	}
-
 	bColor := columnBorderColor(m.Cursor.Col)
+	compact := m.Layout.DetailMode == DetailCompact
 
 	col := m.Board.Columns[m.Cursor.Col]
 	if len(col.Tasks) == 0 || m.Cursor.Row >= len(col.Tasks) {
-		return renderDetailPanel("Task Detail", "", "", "", w, bColor)
+		return renderDetailPanel("Task Detail", "", "", "", w, bColor, compact)
 	}
 
 	task := col.Tasks[m.Cursor.Row]
 	return renderDetailPanel(task.Title, task.Body,
 		task.Status.String(), relativeTime(task.UpdatedAt),
-		w, bColor)
+		w, bColor, compact)
 }
 
-func renderDetailPanel(title, body, status, updated string, w int, color lipgloss.Color) string {
+func renderDetailPanel(title, body, status, updated string, w int, color lipgloss.Color, compact bool) string {
 	innerW := w - 4
 
 	displayTitle := truncate(title, max(w-8, 10))
@@ -255,26 +239,33 @@ func renderDetailPanel(title, body, status, updated string, w int, color lipglos
 
 	var rows []string
 
-	if body != "" {
+	if compact {
+		meta := fmt.Sprintf("  Status: %s    Updated: %s", status, updated)
+		rows = append(rows, renderContentRow(
+			padRight(meta, innerW), color, BodyPreview, true))
+	} else if body != "" {
 		lines := strings.Split(body, "\n")
 		for _, line := range lines {
 			truncated := truncate(line, innerW-2)
 			rows = append(rows, renderContentRow(
 				padRight("  "+truncated, innerW), color, NormalTask, true))
 		}
+		if status != "" {
+			rows = append(rows, renderEmptyRow(w, color, true))
+			rows = append(rows, renderContentRow(
+				padRight(fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW), color, BodyPreview, true))
+		}
 	} else if title != "" {
 		rows = append(rows, renderContentRow(
 			padRight("  (no description)", innerW), color, BodyPreview, true))
+		if status != "" {
+			rows = append(rows, renderEmptyRow(w, color, true))
+			rows = append(rows, renderContentRow(
+				padRight(fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW), color, BodyPreview, true))
+		}
 	} else {
 		rows = append(rows, renderContentRow(
 			padRight("  (no task selected)", innerW), color, BodyPreview, true))
-	}
-
-	if status != "" {
-		meta := fmt.Sprintf("  Status: %s    Updated: %s", status, updated)
-		rows = append(rows, renderEmptyRow(w, color, true))
-		rows = append(rows, renderContentRow(
-			padRight(meta, innerW), color, BodyPreview, true))
 	}
 
 	bottom := renderBottomBorder(w, color, true)
@@ -318,8 +309,6 @@ func relativeTime(t time.Time) string {
 	}
 }
 
-// ─── Help bar ─────────────────────────────────────────────────────────────
-
 func (m Model) helpView() string {
 	switch m.Mode {
 	case ModeNormal:
@@ -341,8 +330,6 @@ func (m Model) helpView() string {
 	}
 	return ""
 }
-
-// ─── Scrolling helpers ────────────────────────────────────────────────────
 
 func (m Model) cursorLine() int {
 	line := 0
@@ -383,8 +370,6 @@ func (m Model) scrollOffset() int {
 	}
 	return offset
 }
-
-// ─── Utilities ────────────────────────────────────────────────────────────
 
 func padRight(s string, w int) string {
 	n := lipgloss.Width(s)

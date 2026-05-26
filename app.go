@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -94,7 +95,7 @@ type Model struct {
 
 	Viewport      viewport.Model
 	ViewportReady bool
-	ColWidths     [3]int
+	Layout        ScreenLayout
 
 	keys keyMap
 }
@@ -228,7 +229,8 @@ func NewModel() Model {
 		Viewport:     vp,
 		keys:         defaultKeyMap(),
 	}
-	m = m.recalcColWidths()
+	// Eager layout so View() always has valid column widths.
+	m.Layout = computeLayout(80, 24, 0, false)
 	return m
 }
 
@@ -298,22 +300,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		footerLines := 4
-		vpHeight := max(m.Height-footerLines, 5)
+		m = m.recomputeLayout()
 		if !m.ViewportReady {
-			m.Viewport = viewport.New(msg.Width, vpHeight)
+			m.Viewport = viewport.New(m.Width, m.Layout.ViewportHeight)
 			m.Viewport.KeyMap = viewport.KeyMap{}
 			m.ViewportReady = true
 		} else {
-			m.Viewport.Width = msg.Width
-			m.Viewport.Height = vpHeight
+			m.Viewport.Width = m.Width
+			m.Viewport.Height = m.Layout.ViewportHeight
 		}
 
 	case tea.KeyMsg:
 		m.StatusMsg = ""
 		m, cmd = m.handleKeyMsg(msg)
 		cmds = append(cmds, cmd)
-		m = m.recalcColWidths()
+		m = m.recomputeLayout()
 
 	case loadResultMsg:
 		m.Board = msg.board
@@ -325,7 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m = m.recalcColWidths()
+		m = m.recomputeLayout()
 
 	case loadFirstRunMsg:
 
@@ -351,22 +352,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────── ch────
-
-func (m Model) recalcColWidths() Model {
-	for i := range m.ColWidths {
-		w := 30
-		for _, t := range m.Board.Columns[i].Tasks {
-			tw := len([]rune(t.Title)) + 4
-			if tw > w {
-				w = tw
-			}
+func (m Model) recomputeLayout() Model {
+	bodyLineCount := 0
+	if m.Mode == ModeNormal && m.Width > 0 && m.Height > 0 {
+		col := m.Board.Columns[m.Cursor.Col]
+		if m.Cursor.Row < len(col.Tasks) {
+			bodyLineCount = len(strings.Split(col.Tasks[m.Cursor.Row].Body, "\n"))
 		}
-		if w > maxColWidth {
-			w = maxColWidth
-		}
-		m.ColWidths[i] = w
 	}
+	hideDetail := m.Mode != ModeNormal
+	m.Layout = computeLayout(m.Width, m.Height, bodyLineCount, hideDetail)
 	return m
 }
 
