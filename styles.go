@@ -36,7 +36,8 @@ var (
 			Bold(true)
 
 	BodyPreview = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#484F58"))
+			Foreground(lipgloss.Color("#8B949E")).
+			Italic(true)
 
 	StatusSuccess = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#3FB950"))

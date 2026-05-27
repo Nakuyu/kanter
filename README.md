@@ -36,6 +36,8 @@ So I started exploring apps, software, web interfaces. They were very feature ri
 
 There's also this part I feel that software shouldn't be time-consuming to use. So yeah. Minimal friction in usage. Inspired by [lazygit](https://github.com/jesseduffield/lazygit) by jesseduffield and nowhere close to that is this lol.
 
+This is a very barebones for now, but functional is the goal here
+If you try this any feedback is appreciated.
 ---
 
 ## Features
@@ -53,17 +55,17 @@ There's also this part I feel that software shouldn't be time-consuming to use. 
 
 ### Navigation mode
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Move cursor down / up |
-| `h` / `l` | Move to previous / next column |
+| Key                 | Action |
+|---------------------|---|
+| `j` / `k`           | Move cursor down / up |
+| `h` / `l`           | Move to previous / next column |q
 | `tab` / `shift+tab` | Next / previous column |
-| `0` `1` `2` | Jump to TODO / DOING / DONE |
-| `enter` | Move task forward (TODO -> DOING -> DONE) |
-| `backspace` | Move task backward |
-| `a` | Add a new task |
-| `e` | Edit the selected task |
-| `d` | Delete the selected task |
+| `1` `2` `3`         | Jump to TODO / DOING / DONE |
+| `enter`             | Move task forward (TODO -> DOING -> DONE) |
+| `backspace`         | Move task backward |
+| `a`                 | Add a new task |
+| `e`                 | Edit the selected task |
+| `d`                 | Delete the selected task |
 
 ---
 
