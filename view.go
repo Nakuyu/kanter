@@ -191,7 +191,7 @@ func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 	active := colIdx == m.Cursor.Col
 	bColor := columnBorderColor(colIdx)
 
-	header := fmt.Sprintf("(%d) %s (%d)", colIdx, col.Status.String(), len(col.Tasks))
+	header := fmt.Sprintf("[%d] %s (%d)", colIdx, col.Status.String(), len(col.Tasks))
 
 	scroll := ""
 	if active && len(col.Tasks) > 0 {
