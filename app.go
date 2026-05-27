@@ -376,13 +376,13 @@ func (m Model) recomputeLayout() Model {
 	}
 	hideDetail := m.Mode != ModeNormal
 	m.Layout = computeLayout(m.Width, m.Height, bodyLineCount, hideDetail)
-	
-	// Sync viewport dimensions with newly computed layout
+
+	// Sync viewport dimensions with layout
 	if m.ViewportReady {
 		m.Viewport.Width = m.Width
 		m.Viewport.Height = m.Layout.ViewportHeight
 	}
-	
+
 	return m
 }
 

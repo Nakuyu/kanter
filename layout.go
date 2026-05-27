@@ -22,7 +22,6 @@ type SpaceItem struct {
 	Weight  int
 }
 
-// SpaceAllocation calculation part, Integer-only no floating point.
 func SpaceAllocation(total int, items []SpaceItem) []int {
 	if len(items) == 0 {
 		return nil
@@ -36,8 +35,9 @@ func SpaceAllocation(total int, items []SpaceItem) []int {
 		weightSum += it.Weight
 	}
 
-	remaining := total - totalMin // dividing the remainder proportionally by Weight. Remainder distributed 1 by 1 in order.
-	if remaining > 0 && weightSum > 0 {
+	remaining := total - totalMin
+	if remaining >= 0 && weightSum > 0 {
+		// Enough space: distribute surplus proportionally by weight
 		unit := remaining / weightSum
 		extra := remaining - unit*weightSum
 
@@ -50,18 +50,17 @@ func SpaceAllocation(total int, items []SpaceItem) []int {
 				}
 			}
 		}
-	} else if remaining < 0 {
-		// Not enough space for minimums distribute proportionally by MinSize.
-		if totalMin > 0 {
-			var allocated int
-			for i, it := range items {
-				result[i] = total * it.MinSize / totalMin
-				allocated += result[i]
-			}
-			for i := 0; allocated < total; i++ {
-				result[i%len(items)]++
-				allocated++
-			}
+	} else if remaining < 0 && totalMin > 0 {
+		// Not enough space: scale items proportionally by their MinSize
+		var allocated int
+		for i, it := range items {
+			result[i] = total * it.MinSize / totalMin
+			allocated += result[i]
+		}
+		// Distribute any remainder from rounding errors to reach exactly 'total'
+		for i := 0; allocated < total; i++ {
+			result[i%len(items)]++
+			allocated++
 		}
 	}
 
@@ -128,10 +127,8 @@ func detailInfo(zone LayoutZone, bodyLineCount int, hideDetail bool) (DetailMode
 	}
 
 	switch zone {
-	case ZoneWide:
+	case ZoneWide, ZoneNormal:
 		return DetailFull, min(bodyLineCount+4, wideDetailMax)
-	case ZoneNormal:
-		return DetailCompact, 3
 	default:
 		return DetailHidden, 0
 	}

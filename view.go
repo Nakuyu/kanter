@@ -10,7 +10,6 @@ import (
 
 func (m Model) View() string {
 	m = m.recomputeLayout()
-	
 	if !m.ViewportReady {
 		return m.renderBoardContent() + "\n" + m.renderFooter()
 	}
@@ -373,13 +372,13 @@ func (m Model) helpView() string {
 
 func (m Model) cursorLine() int {
 	col := m.Board.Columns[m.Cursor.Col]
-	line := 1 // top border
+	line := 1
 	for i := 0; i < m.Cursor.Row && i < len(col.Tasks); i++ {
-		line++ // task title
+		line++
 		if col.Tasks[i].Body != "" {
-			line++ // body preview
+			line++
 		}
-		line++ // spacer between tasks
+		line++
 	}
 	return line
 }
