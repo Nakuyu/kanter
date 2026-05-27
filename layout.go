@@ -131,7 +131,7 @@ func detailInfo(zone LayoutZone, bodyLineCount int, hideDetail bool) (DetailMode
 	case ZoneWide:
 		return DetailFull, min(bodyLineCount+4, wideDetailMax)
 	case ZoneNormal:
-		return DetailFull, min(bodyLineCount+4, wideDetailMax)
+		return DetailCompact, 3
 	default:
 		return DetailHidden, 0
 	}

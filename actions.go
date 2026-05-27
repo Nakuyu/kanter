@@ -9,8 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ─── Normal mode ──────────────────────────────────────────────────────────
-
 func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -66,92 +64,18 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	return m, nil
 }
-
-// ─── Adding mode ──────────────────────────────────────────────────────────
-
 func (m Model) enterAddMode() Model {
 	m.Mode = ModeAdding
-	m.AddStage = 0
+	m.FormStage = formStageTitle
 	m.TitleInput.SetValue("")
 	m.BodyTextarea.SetValue("")
 	m.TitleInput.Focus()
 	return m
 }
 
-func (m Model) cancelAddMode() Model {
-	m.Mode = ModeNormal
-	m.AddStage = 0
-	m.TitleInput.Blur()
-	m.BodyTextarea.Blur()
-	return m
-}
-
-func (m Model) handleAddingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if key.Matches(msg, m.keys.Quit) {
-		return m, tea.Quit
-	}
-
-	if m.AddStage == 0 {
-		switch {
-		case key.Matches(msg, m.keys.Deny):
-			m = m.cancelAddMode()
-			return m, nil
-		case key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.Tab):
-			return m.handleAddConfirm()
-		}
-		return m, nil
-	}
-	switch {
-	case key.Matches(msg, m.keys.Deny):
-		m = m.cancelAddMode()
-		return m, nil
-	case msg.Alt && msg.Type == tea.KeyEnter:
-		return m.handleAddConfirm()
-	case key.Matches(msg, m.keys.ShiftTab):
-		m.AddStage = 0
-		m.BodyTextarea.Blur()
-		return m, m.TitleInput.Focus()
-	}
-
-	return m, nil
-}
-
-func (m Model) handleAddConfirm() (Model, tea.Cmd) {
-	if m.AddStage == 0 {
-		title := m.TitleInput.Value()
-		if title == "" {
-			return m, nil
-		}
-		m.AddStage = 1
-		m.TitleInput.Blur()
-		return m, m.BodyTextarea.Focus()
-	}
-
-	title := strings.TrimSpace(m.TitleInput.Value())
-	if title == "" {
-		return m, nil
-	}
-
-	task := Task{
-		ID:        newID(),
-		Title:     title,
-		Body:      m.BodyTextarea.Value(),
-		Status:    StatusTodo,
-		UpdatedAt: time.Now(),
-	}
-	m.Board.Columns[0].Tasks = append(m.Board.Columns[0].Tasks, task)
-
-	m.StatusMsg = "Task created"
-	m.StatusMsgType = MsgSuccess
-	m = m.cancelAddMode()
-	return m, saveBoardCmd(m)
-}
-
-// ─── Editing mode ─────────────────────────────────────────────────────────
-
 func (m Model) enterEditMode() Model {
 	m.Mode = ModeEditing
-	m.AddStage = 0
+	m.FormStage = formStageTitle
 	task := m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row]
 	m.TitleInput.SetValue(task.Title)
 	m.BodyTextarea.SetValue(task.Body)
@@ -159,38 +83,32 @@ func (m Model) enterEditMode() Model {
 	return m
 }
 
-func (m Model) cancelEditMode() Model {
+func (m Model) cancelForm() Model {
 	m.Mode = ModeNormal
-	m.AddStage = 0
+	m.FormStage = formStageTitle
 	m.TitleInput.Blur()
 	m.BodyTextarea.Blur()
 	return m
 }
 
-func (m Model) handleEditingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
+func (m Model) handleFormMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
 	}
 
-	if m.AddStage == 0 {
-		switch {
-		case key.Matches(msg, m.keys.Deny):
-			m = m.cancelEditMode()
-			return m, nil
-		case key.Matches(msg, m.keys.Confirm), key.Matches(msg, m.keys.Tab):
-			return m.handleEditConfirm()
-		}
-		return m, nil
-	}
-
 	switch {
 	case key.Matches(msg, m.keys.Deny):
-		m = m.cancelEditMode()
-		return m, nil
-	case msg.Alt && msg.Type == tea.KeyEnter:
-		return m.handleEditConfirm()
-	case key.Matches(msg, m.keys.ShiftTab):
-		m.AddStage = 0
+		return m.cancelForm(), nil
+
+	case m.FormStage == formStageTitle &&
+		(key.Matches(msg, m.keys.Confirm) || key.Matches(msg, m.keys.Tab)):
+		return m.advanceOrSubmitForm()
+
+	case m.FormStage == formStageBody && msg.Alt && msg.Type == tea.KeyEnter:
+		return m.advanceOrSubmitForm()
+
+	case m.FormStage == formStageBody && key.Matches(msg, m.keys.ShiftTab):
+		m.FormStage = formStageTitle
 		m.BodyTextarea.Blur()
 		return m, m.TitleInput.Focus()
 	}
@@ -198,13 +116,12 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleEditConfirm() (Model, tea.Cmd) {
-	if m.AddStage == 0 {
-		title := m.TitleInput.Value()
-		if title == "" {
+func (m Model) advanceOrSubmitForm() (Model, tea.Cmd) {
+	if m.FormStage == formStageTitle {
+		if m.TitleInput.Value() == "" {
 			return m, nil
 		}
-		m.AddStage = 1
+		m.FormStage = formStageBody
 		m.TitleInput.Blur()
 		return m, m.BodyTextarea.Focus()
 	}
@@ -213,18 +130,45 @@ func (m Model) handleEditConfirm() (Model, tea.Cmd) {
 	if title == "" {
 		return m, nil
 	}
+	body := m.BodyTextarea.Value()
 
-	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].Title = title
-	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].Body = m.BodyTextarea.Value()
-	m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row].UpdatedAt = time.Now()
+	switch m.Mode {
+	case ModeAdding:
+		return m.submitNewTask(title, body)
+	case ModeEditing:
+		return m.submitEditedTask(title, body)
+	}
+	return m, nil
+}
 
-	m.StatusMsg = "Task saved"
+func (m Model) submitNewTask(title, body string) (Model, tea.Cmd) {
+	task := Task{
+		ID:        newID(),
+		Title:     title,
+		Body:      body,
+		Status:    StatusTodo,
+		UpdatedAt: time.Now(),
+	}
+	idx := columnIndex(task.Status)
+	m.Board.Columns[idx].Tasks = append(m.Board.Columns[idx].Tasks, task)
+
+	m.StatusMsg = "Task created"
 	m.StatusMsgType = MsgSuccess
-	m = m.cancelEditMode()
+	m = m.cancelForm()
 	return m, saveBoardCmd(m)
 }
 
-// ─── Confirm delete mode ──────────────────────────────────────────────────
+func (m Model) submitEditedTask(title, body string) (Model, tea.Cmd) {
+	t := &m.Board.Columns[m.Cursor.Col].Tasks[m.Cursor.Row]
+	t.Title = title
+	t.Body = body
+	t.UpdatedAt = time.Now()
+
+	m.StatusMsg = "Task saved"
+	m.StatusMsgType = MsgSuccess
+	m = m.cancelForm()
+	return m, saveBoardCmd(m)
+}
 
 func (m Model) handleConfirmDeleteMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
@@ -253,8 +197,6 @@ func (m Model) deleteCurrentTask() Model {
 	}
 	return m.clampRow()
 }
-
-// ─── Cursor movement ──────────────────────────────────────────────────────
 
 func (m Model) moveCursorUp() Model {
 	if m.Cursor.Row > 0 {
@@ -298,8 +240,9 @@ func (m Model) clampRow() Model {
 }
 
 func (m Model) moveTask(delta int) Model {
-	target := m.Cursor.Col + delta
-	if target < 0 || target >= len(m.Board.Columns) {
+	targetIdx := m.Cursor.Col + delta
+	targetStatus, ok := statusAt(targetIdx)
+	if !ok {
 		return m
 	}
 
@@ -309,20 +252,19 @@ func (m Model) moveTask(delta int) Model {
 	}
 
 	task := col.Tasks[m.Cursor.Row]
-	newStatus := Status(target)
-	task.Status = newStatus
+	task.Status = targetStatus
 	task.UpdatedAt = time.Now()
 
 	arrow := "→"
 	if delta < 0 {
 		arrow = "←"
 	}
-	m.StatusMsg = fmt.Sprintf("%s Moved to %s", arrow, newStatus)
+	m.StatusMsg = fmt.Sprintf("%s Moved to %s", arrow, targetStatus)
 	m.StatusMsgType = MsgInfo
 
 	col.Tasks = append(col.Tasks[:m.Cursor.Row], col.Tasks[m.Cursor.Row+1:]...)
-	m.Board.Columns[target].Tasks = append(
-		m.Board.Columns[target].Tasks, task,
+	m.Board.Columns[targetIdx].Tasks = append(
+		m.Board.Columns[targetIdx].Tasks, task,
 	)
 
 	return m.clampRow()

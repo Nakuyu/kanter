@@ -9,6 +9,8 @@ import (
 )
 
 func (m Model) View() string {
+	m = m.recomputeLayout()
+	
 	if !m.ViewportReady {
 		return m.renderBoardContent() + "\n" + m.renderFooter()
 	}
@@ -57,12 +59,27 @@ func (m Model) statusLine() string {
 }
 
 func (m Model) renderBoardContent() string {
+	targetInnerRows := 0
+	for i := range m.Board.Columns {
+		if m.Layout.ColWidths[i] == 0 {
+			continue
+		}
+		if n := m.columnInnerRowCount(i); n > targetInnerRows {
+			targetInnerRows = n
+		}
+	}
+	if m.Mode == ModeNormal {
+		if avail := m.Layout.ViewportHeight - 2; avail > targetInnerRows {
+			targetInnerRows = avail
+		}
+	}
+
 	var cols []string
 	for i := range m.Board.Columns {
 		if m.Layout.ColWidths[i] == 0 {
 			continue
 		}
-		cols = append(cols, m.renderColumn(i))
+		cols = append(cols, m.renderColumn(i, targetInnerRows))
 	}
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 
@@ -73,7 +90,7 @@ func (m Model) renderBoardContent() string {
 	switch m.Mode {
 	case ModeAdding, ModeEditing:
 		var label, input string
-		if m.AddStage == 0 {
+		if m.FormStage == formStageTitle {
 			label = PromptStyle.Render("Title:")
 			input = m.TitleInput.View()
 		} else {
@@ -149,7 +166,25 @@ func (m Model) columnWidth(colIdx int) int {
 	return m.Layout.ColWidths[colIdx]
 }
 
-func (m Model) renderColumn(colIdx int) string {
+func (m Model) columnInnerRowCount(colIdx int) int {
+	col := m.Board.Columns[colIdx]
+	if len(col.Tasks) == 0 {
+		return 1
+	}
+	n := 0
+	for i, t := range col.Tasks {
+		n++ // title
+		if t.Body != "" {
+			n++ // body preview
+		}
+		if i < len(col.Tasks)-1 {
+			n++ // spacer
+		}
+	}
+	return n
+}
+
+func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 	col := m.Board.Columns[colIdx]
 	w := m.columnWidth(colIdx)
 	innerW := w - 4
@@ -205,11 +240,16 @@ func (m Model) renderColumn(colIdx int) string {
 		}
 	}
 
+	padding := targetInnerRows - len(rows)
+
 	bottom := renderBottomBorder(w, bColor, active)
 
-	allRows := make([]string, 0, len(rows)+2)
+	allRows := make([]string, 0, len(rows)+max(padding, 0)+2)
 	allRows = append(allRows, top)
 	allRows = append(allRows, rows...)
+	for i := 0; i < padding; i++ {
+		allRows = append(allRows, renderEmptyRow(w, bColor, active))
+	}
 	allRows = append(allRows, bottom)
 
 	return lipgloss.JoinVertical(lipgloss.Left, allRows...)
@@ -332,27 +372,10 @@ func (m Model) helpView() string {
 }
 
 func (m Model) cursorLine() int {
-	line := 0
-	for i := 0; i < m.Cursor.Col; i++ {
-		col := m.Board.Columns[i]
-		line++ // header
-		if len(col.Tasks) == 0 {
-			line++ // (empty)
-		} else {
-			for _, t := range col.Tasks {
-				line++ // task row
-				if t.Body != "" {
-					line++ // body preview
-				}
-				line++ // spacer between tasks
-			}
-			line-- // no trailing spacer
-		}
-	}
 	col := m.Board.Columns[m.Cursor.Col]
-	line++ // header
+	line := 1 // top border
 	for i := 0; i < m.Cursor.Row && i < len(col.Tasks); i++ {
-		line++ // task row
+		line++ // task title
 		if col.Tasks[i].Body != "" {
 			line++ // body preview
 		}

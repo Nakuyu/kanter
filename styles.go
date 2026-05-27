@@ -4,13 +4,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var columnColours = [3]lipgloss.Color{
+var columnColours = [numStatuses]lipgloss.Color{
 	StatusTodo:  "#58A6FF",
 	StatusDoing: "#D29922",
 	StatusDone:  "#3FB950",
 }
 
-var columnSelectionBg = [3]lipgloss.Color{
+var columnSelectionBg = [numStatuses]lipgloss.Color{
 	StatusTodo:  "#174E9B",
 	StatusDoing: "#7B5E00",
 	StatusDone:  "#1A6B2F",
@@ -25,7 +25,7 @@ var (
 			Italic(true)
 
 	HelpBar = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8B949E"))
+		Foreground(lipgloss.Color("#8B949E"))
 
 	PromptStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#58A6FF")).
@@ -49,7 +49,7 @@ var (
 			Foreground(lipgloss.Color("#8B949E"))
 
 	Divider = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#21262D"))
+		Foreground(lipgloss.Color("#21262D"))
 )
 
 func SelectedItemStyle(colIdx int) lipgloss.Style {

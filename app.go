@@ -14,8 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ─── Types ────────────────────────────────────────────────────────────────
-
 type Status int
 
 const (
@@ -23,6 +21,8 @@ const (
 	StatusDoing
 	StatusDone
 )
+
+const numStatuses = 3
 
 func (s Status) String() string {
 	switch s {
@@ -35,6 +35,24 @@ func (s Status) String() string {
 	default:
 		return "???"
 	}
+}
+
+func columnIndex(s Status) int {
+	if s < 0 || int(s) >= numStatuses {
+		return -1
+	}
+	return int(s)
+}
+
+func statusAt(i int) (Status, bool) {
+	if i < 0 || i >= numStatuses {
+		return 0, false
+	}
+	return Status(i), true
+}
+
+func allStatuses() [numStatuses]Status {
+	return [numStatuses]Status{StatusTodo, StatusDoing, StatusDone}
 }
 
 type Task struct {
@@ -51,7 +69,7 @@ type Column struct {
 }
 
 type Board struct {
-	Columns [3]Column `json:"columns"`
+	Columns [numStatuses]Column `json:"columns"`
 }
 
 type Cursor struct {
@@ -66,6 +84,12 @@ const (
 	ModeAdding
 	ModeEditing
 	ModeConfirmDelete
+)
+
+// formStage indexes the two-step add/edit form: title to body.
+const (
+	formStageTitle = 0
+	formStageBody  = 1
 )
 
 type MsgType int
@@ -83,7 +107,7 @@ type Model struct {
 
 	TitleInput   textinput.Model
 	BodyTextarea textarea.Model
-	AddStage     int
+	FormStage    int
 
 	Width  int
 	Height int
@@ -99,8 +123,6 @@ type Model struct {
 
 	keys keyMap
 }
-
-// ─── Key bindings ─────────────────────────────────────────────────────────
 
 type keyMap struct {
 	Up         key.Binding
@@ -192,8 +214,6 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	}
 }
 
-// ─── Model construction ───────────────────────────────────────────────────
-
 func NewModel() Model {
 	ti := textinput.New()
 	ti.Placeholder = "Task title"
@@ -212,19 +232,18 @@ func NewModel() Model {
 
 	savePath, _ := boardPath()
 
+	var cols [numStatuses]Column
+	for i, s := range allStatuses() {
+		cols[i] = Column{Status: s, Tasks: []Task{}}
+	}
+
 	m := Model{
-		Board: Board{
-			Columns: [3]Column{
-				{Status: StatusTodo, Tasks: []Task{}},
-				{Status: StatusDoing, Tasks: []Task{}},
-				{Status: StatusDone, Tasks: []Task{}},
-			},
-		},
+		Board:        Board{Columns: cols},
 		Cursor:       Cursor{Col: 0, Row: 0},
 		Mode:         ModeNormal,
 		TitleInput:   ti,
 		BodyTextarea: ta,
-		AddStage:     0,
+		FormStage:    formStageTitle,
 		SavePath:     savePath,
 		Viewport:     vp,
 		keys:         defaultKeyMap(),
@@ -233,8 +252,6 @@ func NewModel() Model {
 	m.Layout = computeLayout(80, 24, 0, false)
 	return m
 }
-
-// ─── Messages ─────────────────────────────────────────────────────────────
 
 type loadResultMsg struct {
 	board Board
@@ -246,15 +263,16 @@ type errMsg struct {
 	err error
 }
 
-// ─── Commands ─────────────────────────────────────────────────────────────
-
 func loadBoardCmd() tea.Cmd {
 	return func() tea.Msg {
 		board, err := loadBoard()
 		if err != nil {
-			return loadFirstRunMsg{}
+			if isBoardMissing(err) {
+				return loadFirstRunMsg{}
+			}
+			return errMsg{err: err}
 		}
-		// Ensure column slices are non-nil
+		// Ensure column slices are non-nil so the renderer never sees nil.
 		for i := range board.Columns {
 			if board.Columns[i].Tasks == nil {
 				board.Columns[i].Tasks = []Task{}
@@ -273,13 +291,9 @@ func saveBoardCmd(m Model) tea.Cmd {
 	}
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────
-
 func (m Model) Init() tea.Cmd {
 	return loadBoardCmd()
 }
-
-// ─── Update ───────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -287,7 +301,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Pass ALL messages to the active sub-model so it receives TickMsg
 	if m.Mode == ModeAdding || m.Mode == ModeEditing {
-		if m.AddStage == 0 {
+		if m.FormStage == formStageTitle {
 			m.TitleInput, cmd = m.TitleInput.Update(msg)
 			cmds = append(cmds, cmd)
 		} else {
@@ -329,6 +343,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.recomputeLayout()
 
 	case loadFirstRunMsg:
+		m.StatusMsg = "Welcome — press 'a' to add your first task"
+		m.StatusMsgType = MsgInfo
 
 	case errMsg:
 		m.StatusMsg = fmt.Sprintf("Error: %v", msg.err)
@@ -342,10 +358,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch m.Mode {
 	case ModeNormal:
 		return m.handleNormalMode(msg)
-	case ModeAdding:
-		return m.handleAddingMode(msg)
-	case ModeEditing:
-		return m.handleEditingMode(msg)
+	case ModeAdding, ModeEditing:
+		return m.handleFormMode(msg)
 	case ModeConfirmDelete:
 		return m.handleConfirmDeleteMode(msg)
 	}
@@ -362,6 +376,13 @@ func (m Model) recomputeLayout() Model {
 	}
 	hideDetail := m.Mode != ModeNormal
 	m.Layout = computeLayout(m.Width, m.Height, bodyLineCount, hideDetail)
+	
+	// Sync viewport dimensions with newly computed layout
+	if m.ViewportReady {
+		m.Viewport.Width = m.Width
+		m.Viewport.Height = m.Layout.ViewportHeight
+	}
+	
 	return m
 }
 
