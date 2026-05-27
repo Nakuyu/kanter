@@ -53,23 +53,21 @@ var (
 		Foreground(lipgloss.Color("#21262D"))
 )
 
-func SelectedItemStyle(colIdx int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Background(columnSelectionBg[colIdx]).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Bold(true)
-}
+var (
+	SelectedItemStyle [numStatuses]lipgloss.Style
+	SelectedBodyStyle [numStatuses]lipgloss.Style
+)
 
-func SelectedBodyStyle(colIdx int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Background(columnSelectionBg[colIdx]).
-		Foreground(lipgloss.Color("#8B949E"))
-}
-
-func ColumnHeader(colIdx int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Bold(true).
-		Foreground(columnColours[colIdx])
+func init() {
+	for i := 0; i < numStatuses; i++ {
+		SelectedItemStyle[i] = lipgloss.NewStyle().
+			Background(columnSelectionBg[i]).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Bold(true)
+		SelectedBodyStyle[i] = lipgloss.NewStyle().
+			Background(columnSelectionBg[i]).
+			Foreground(lipgloss.Color("#8B949E"))
+	}
 }
 
 func columnBorderColor(colIdx int) lipgloss.Color {

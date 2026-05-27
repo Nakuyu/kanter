@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -86,7 +85,6 @@ const (
 	ModeConfirmDelete
 )
 
-// formStage indexes the two-step add/edit form: title to body.
 const (
 	formStageTitle = 0
 	formStageBody  = 1
@@ -100,10 +98,18 @@ const (
 	MsgError
 )
 
+type Focus int
+
+const (
+	FocusList Focus = iota
+	FocusDetail
+)
+
 type Model struct {
-	Board  Board
-	Cursor Cursor
-	Mode   Mode
+	Board   Board
+	Cursor  Cursor
+	Mode    Mode
+	Focused Focus
 
 	TitleInput   textinput.Model
 	BodyTextarea textarea.Model
@@ -120,6 +126,9 @@ type Model struct {
 	Viewport      viewport.Model
 	ViewportReady bool
 	Layout        ScreenLayout
+
+	DetailVP      viewport.Model
+	DetailVPReady bool
 
 	keys keyMap
 }
@@ -202,18 +211,6 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Left, k.Add, k.Edit, k.Enter, k.Delete, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Left, k.Right},
-		{k.Add, k.Edit, k.Enter, k.Delete},
-		{k.Confirm, k.Deny, k.Quit},
-	}
-}
-
 func NewModel() Model {
 	ti := textinput.New()
 	ti.Placeholder = "Task title"
@@ -230,6 +227,9 @@ func NewModel() Model {
 	vp := viewport.New(0, 0)
 	vp.KeyMap = viewport.KeyMap{}
 
+	dvp := viewport.New(0, 0)
+	dvp.KeyMap = viewport.KeyMap{}
+
 	savePath, _ := boardPath()
 
 	var cols [numStatuses]Column
@@ -241,14 +241,15 @@ func NewModel() Model {
 		Board:        Board{Columns: cols},
 		Cursor:       Cursor{Col: 0, Row: 0},
 		Mode:         ModeNormal,
+		Focused:      FocusList,
 		TitleInput:   ti,
 		BodyTextarea: ta,
 		FormStage:    formStageTitle,
 		SavePath:     savePath,
 		Viewport:     vp,
+		DetailVP:     dvp,
 		keys:         defaultKeyMap(),
 	}
-	// Eager layout so View() always has valid column widths.
 	m.Layout = computeLayout(80, 24, 0, false)
 	return m
 }
@@ -323,6 +324,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Viewport.Width = m.Width
 			m.Viewport.Height = m.Layout.ViewportHeight
 		}
+		if !m.DetailVPReady {
+			m.DetailVP = viewport.New(max(m.Width-4, 10), max(m.Layout.DetailHeight-2, 1))
+			m.DetailVP.KeyMap = viewport.KeyMap{}
+			m.DetailVPReady = true
+		} else {
+			m.DetailVP.Width = max(m.Width-4, 10)
+			m.DetailVP.Height = max(m.Layout.DetailHeight-2, 1)
+		}
 
 	case tea.KeyMsg:
 		m.StatusMsg = ""
@@ -369,10 +378,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) recomputeLayout() Model {
 	bodyLineCount := 0
 	if m.Mode == ModeNormal && m.Width > 0 && m.Height > 0 {
-		col := m.Board.Columns[m.Cursor.Col]
-		if m.Cursor.Row < len(col.Tasks) {
-			bodyLineCount = len(strings.Split(col.Tasks[m.Cursor.Row].Body, "\n"))
-		}
+		bodyLineCount = wideDetailMax
 	}
 	hideDetail := m.Mode != ModeNormal
 	m.Layout = computeLayout(m.Width, m.Height, bodyLineCount, hideDetail)
@@ -383,13 +389,24 @@ func (m Model) recomputeLayout() Model {
 		m.Viewport.Height = m.Layout.ViewportHeight
 	}
 
+	// Sync detail viewport dimensions with layout
+	if m.DetailVPReady {
+		m.DetailVP.Width = max(m.Width-4, 10)
+		m.DetailVP.Height = max(m.Layout.DetailHeight-2, 1)
+	}
+
+	// If detail goes away, reset focus to list
+	if m.Layout.DetailMode == DetailHidden && m.Focused == FocusDetail {
+		m.Focused = FocusList
+	}
+
 	return m
 }
 
 func newID() string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
-		b = []byte{0, 0, 0, 0}
+		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
 }

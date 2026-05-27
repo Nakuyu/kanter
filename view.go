@@ -9,15 +9,49 @@ import (
 )
 
 func (m Model) View() string {
-	m = m.recomputeLayout()
 	if !m.ViewportReady {
 		return m.renderBoardContent() + "\n" + m.renderFooter()
 	}
 
-	m.Viewport.SetContent(m.renderBoardContent())
+	boardContent := m.renderBoardContent()
+
+	// In normal mode, i m splitting header line 0 and bottom border
+	// from viewport so the columns or double pillars (inactive single pillars)
+	// stay framed and look together, in other modes overlay is appened below the board so
+	// only splitting the header there.
+	if m.Mode == ModeNormal {
+		allLines := strings.Split(boardContent, "\n")
+		if len(allLines) >= 3 {
+			header := allLines[0]
+			bottomBorder := allLines[len(allLines)-1]
+			body := strings.Join(allLines[1:len(allLines)-1], "\n")
+
+			m.Viewport.SetContent(body)
+			m.Viewport.SetYOffset(m.scrollOffset())
+
+			parts := []string{header}
+			parts = append(parts, m.Viewport.View())
+			parts = append(parts, bottomBorder)
+			if m.Layout.DetailMode != DetailHidden {
+				parts = append(parts, m.renderDetailOutside())
+			}
+			parts = append(parts, m.renderFooter())
+			return lipgloss.JoinVertical(lipgloss.Left, parts...)
+		}
+	}
+
+	lines := strings.SplitN(boardContent, "\n", 2)
+	header := lines[0]
+	body := ""
+	if len(lines) > 1 {
+		body = lines[1]
+	}
+
+	m.Viewport.SetContent(body)
 	m.Viewport.SetYOffset(m.scrollOffset())
 
-	parts := []string{m.Viewport.View()}
+	parts := []string{header}
+	parts = append(parts, m.Viewport.View())
 
 	if m.Layout.DetailMode != DetailHidden {
 		parts = append(parts, m.renderDetailOutside())
@@ -33,8 +67,8 @@ func (m Model) renderFooter() string {
 	divider := Divider.Render(strings.Repeat("─", w))
 	status := m.statusLine()
 	help := m.helpView()
-	path := HelpBar.Render(fmt.Sprintf("data: %s", m.SavePath))
-	return lipgloss.JoinVertical(lipgloss.Left, divider, status, help, path)
+	// data line replaced with open space so add/edit feels less cramped
+	return lipgloss.JoinVertical(lipgloss.Left, divider, status, help, "")
 }
 
 func (m Model) statusLine() string {
@@ -68,7 +102,11 @@ func (m Model) renderBoardContent() string {
 		}
 	}
 	if m.Mode == ModeNormal {
-		if avail := m.Layout.ViewportHeight - 2; avail > targetInnerRows {
+		// Fill the entire viewport height so there's no gap between the last
+		// content row and the sticky bottom border. The board has targetInnerRows
+		// content rows (all with column borders) sandwiched between the header
+		// and bottom border; it's just not a fun sandwich, that's all.
+		if avail := m.Layout.ViewportHeight; avail > targetInnerRows {
 			targetInnerRows = avail
 		}
 	}
@@ -207,7 +245,7 @@ func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 
 		if selected {
 			rows = append(rows, renderContentRow(
-				padRight("  "+title, innerW), bColor, SelectedItemStyle(colIdx), active))
+				padRight("  "+title, innerW), bColor, SelectedItemStyle[colIdx], active))
 		} else {
 			rows = append(rows, renderContentRow(
 				padRight("  "+title, innerW), bColor, NormalTask, active))
@@ -217,7 +255,7 @@ func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 			bodyLine := truncate(strings.SplitN(task.Body, "\n", 2)[0], innerW-2)
 			if selected {
 				rows = append(rows, renderContentRow(
-					padRight("  "+bodyLine, innerW), bColor, SelectedBodyStyle(colIdx), active))
+					padRight("  "+bodyLine, innerW), bColor, SelectedBodyStyle[colIdx], active))
 			} else {
 				rows = append(rows, renderContentRow(
 					padRight("  "+bodyLine, innerW), bColor, BodyPreview, active))
@@ -232,7 +270,7 @@ func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 	if len(col.Tasks) == 0 {
 		if active {
 			rows = append(rows, renderContentRow(
-				padRight("  (no tasks)", innerW), bColor, SelectedItemStyle(colIdx), active))
+				padRight("  (no tasks)", innerW), bColor, SelectedItemStyle[colIdx], active))
 		} else {
 			rows = append(rows, renderContentRow(
 				padRight("  (no tasks)", innerW), bColor, EmptyColumn, active))
@@ -256,58 +294,83 @@ func (m Model) renderColumn(colIdx int, targetInnerRows int) string {
 
 func (m Model) renderDetailOutside() string {
 	w := m.Width
+	if w <= 0 {
+		w = 80
+	}
 	bColor := columnBorderColor(m.Cursor.Col)
 	compact := m.Layout.DetailMode == DetailCompact
 
 	col := m.Board.Columns[m.Cursor.Col]
 	if len(col.Tasks) == 0 || m.Cursor.Row >= len(col.Tasks) {
-		return renderDetailPanel("Task Detail", "", "", "", w, bColor, compact)
+		return m.renderDetailPanel("Task Detail", "", "", "", w, bColor, compact)
 	}
 
 	task := col.Tasks[m.Cursor.Row]
-	return renderDetailPanel(task.Title, task.Body,
+	return m.renderDetailPanel(task.Title, task.Body,
 		task.Status.String(), relativeTime(task.UpdatedAt),
 		w, bColor, compact)
 }
 
-func renderDetailPanel(title, body, status, updated string, w int, color lipgloss.Color, compact bool) string {
+func (m Model) renderDetailPanel(title, body, status, updated string, w int, color lipgloss.Color, compact bool) string {
 	innerW := w - 4
 
-	displayTitle := truncate(title, max(w-8, 10))
-	top := renderTopBorder(w, displayTitle, "", color, true)
+	var detailScroll string
+	if m.DetailVPReady && m.DetailVP.TotalLineCount() > m.DetailVP.Height {
+		pct := m.DetailVP.ScrollPercent()
+		if pct < 0 {
+			pct = 0
+		} else if pct > 1 {
+			pct = 1
+		}
+		detailScroll = fmt.Sprintf("%d%%", int(pct*100))
+	}
 
-	var rows []string
+	displayTitle := truncate(title, max(w-8-lipgloss.Width(detailScroll), 10))
+	top := renderTopBorder(w, displayTitle, detailScroll, color, true)
+	bottom := renderBottomBorder(w, color, true)
 
 	if compact {
 		meta := fmt.Sprintf("  Status: %s    Updated: %s", status, updated)
-		rows = append(rows, renderContentRow(
-			padRight(meta, innerW), color, BodyPreview, true))
-	} else if body != "" {
-		lines := strings.Split(body, "\n")
-		for _, line := range lines {
-			truncated := truncate(line, innerW-2)
-			rows = append(rows, renderContentRow(
-				padRight("  "+truncated, innerW), color, NormalTask, true))
-		}
-		if status != "" {
-			rows = append(rows, renderEmptyRow(w, color, true))
-			rows = append(rows, renderContentRow(
-				padRight(fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW), color, BodyPreview, true))
-		}
-	} else if title != "" {
-		rows = append(rows, renderContentRow(
-			padRight("  (no description)", innerW), color, BodyPreview, true))
-		if status != "" {
-			rows = append(rows, renderEmptyRow(w, color, true))
-			rows = append(rows, renderContentRow(
-				padRight(fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW), color, BodyPreview, true))
-		}
-	} else {
-		rows = append(rows, renderContentRow(
-			padRight("  (no task selected)", innerW), color, BodyPreview, true))
+		content := renderContentRow(padRight(meta, innerW), color, BodyPreview, true)
+		return lipgloss.JoinVertical(lipgloss.Left, top, content, bottom)
 	}
 
-	bottom := renderBottomBorder(w, color, true)
+	var vpContent string
+	if body != "" {
+		lines := strings.Split(body, "\n")
+		var styledLines []string
+		for _, line := range lines {
+			styledLines = append(styledLines, padRight("  "+truncate(line, innerW-2), innerW))
+		}
+		vpContent = strings.Join(styledLines, "\n")
+		if status != "" {
+			vpContent += "\n" + strings.Repeat(" ", innerW) // spacer
+			vpContent += "\n" + padRight(
+				fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW)
+		}
+	} else if title != "" {
+		vpContent = padRight("  (no description)", innerW)
+	} else {
+		vpContent = padRight("  (no task selected)", innerW)
+	}
+
+	var rows []string
+	if m.DetailVPReady {
+		m.DetailVP.SetContent(vpContent)
+		vpLines := strings.Split(m.DetailVP.View(), "\n")
+		for _, line := range vpLines {
+			rows = append(rows, renderContentRow(line, color, NormalTask, true))
+		}
+	} else {
+		for i, line := range strings.Split(vpContent, "\n") {
+			if i >= 4 {
+				rows = append(rows, renderContentRow(
+					padRight("  ...", innerW), color, BodyPreview, true))
+				break
+			}
+			rows = append(rows, renderContentRow(line, color, NormalTask, true))
+		}
+	}
 
 	allRows := make([]string, 0, len(rows)+2)
 	allRows = append(allRows, top)
@@ -352,7 +415,7 @@ func (m Model) helpView() string {
 	switch m.Mode {
 	case ModeNormal:
 		return HelpBar.Render(
-			"j/k navigate  tab/h/l column  a add  e edit  d delete  enter→  backspace← 1/2/3 jump  q quit",
+			"j/k navigate  tab/shift+tab column  h/l column  a add  e edit  d delete  enter→  backspace← 1/2/3 jump  q quit",
 		)
 	case ModeAdding:
 		return HelpBar.Render(
@@ -372,7 +435,7 @@ func (m Model) helpView() string {
 
 func (m Model) cursorLine() int {
 	col := m.Board.Columns[m.Cursor.Col]
-	line := 1
+	line := 0
 	for i := 0; i < m.Cursor.Row && i < len(col.Tasks); i++ {
 		line++
 		if col.Tasks[i].Body != "" {
@@ -385,12 +448,20 @@ func (m Model) cursorLine() int {
 
 func (m Model) scrollOffset() int {
 	target := m.cursorLine()
-	half := m.Viewport.Height / 2
-	offset := target - half
-	if offset < 0 {
-		return 0
+	// so use the current offset as base what this does is that, then this scrolls when cursor is close to leaving the
+	// visible area that is margin off = 2 so, this helps avoid jump breaks of viewports which is a hassle to handle
+	// ngl every cursor move recalculates offset = target - half
+	currentOffset := m.Viewport.YOffset
+	scrollOffMargin := 2
+
+	switch {
+	case target < currentOffset+scrollOffMargin:
+		return max(0, target-scrollOffMargin)
+	case target > currentOffset+m.Viewport.Height-scrollOffMargin:
+		return target - m.Viewport.Height + scrollOffMargin
+	default:
+		return currentOffset
 	}
-	return offset
 }
 
 func padRight(s string, w int) string {
@@ -411,3 +482,26 @@ func truncate(s string, maxLen int) string {
 	}
 	return string(runes[:maxLen-3]) + "..."
 }
+
+// comments are left intentionally.
+// code explains behavior; comments explain intent.
+// part of the alive internet theory.
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⣀⣀⠀⠀⢹⣿⣿⣿⣿⣿⣿⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠉⠛⠛⠻⣿⣿⣿⡿⠋⠀⣴⣿⣿⠟⠻⠿⠿⣿⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⠂⠀⣠⣿⣿⡏⠀⠠⠾⣿⣿⣿⣦⣤⠀⠀⣸⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁⠀⠚⠻⣿⣿⣷⣤⣤⣀⣠⣿⣿⠟⠁⠠⠾⣿⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣾⣿⣿
+//⣿⣿⣿⣿⣿⣿⠿⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⣿⣿⣿⣿⣿⣿
+//⣿⣿⣿⣿⠟⠁⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠿⠿⠿⣿⣿⣿⣷⣄⠀⠈⠻⣿⣿⣿⣿
+//⣿⣿⡿⠃⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⡃⠀⠀⠀⠀⢈⣿⡟⠀⢠⣿⡿⠋⠉⣿⣿⣏⠀⢻⣧⣀⣀⣀⣀⣀⣼⣿⣿⣿⣿⣷⣄⠀⠙⢿⣿⣿
+//⣿⡿⠁⠀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠻⠟⠁⠀⠀⠙⠟⠃⠀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⠀⠈⢿⣿
+//⣿⠃⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣤⣤⣶⣿⣷⣦⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠘⣿
+//⡿⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⢸
+//⡇⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⢸
+//⣧⠀⠘⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⢸
+//⣿⡀⠀⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠀⢀⣿
+//⣿⣷⡀⠀⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠁⢀⣼⣿
+//⣿⣿⣷⣄⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⢀⣾⣿⣿
+//⣿⣿⣿⣿⣷⣄⠀⠈⠙⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠛⠉⠀⢀⣴⣿⣿⣿⣿
+//⣿⣿⣿⣿⣿⣿⣿⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣴⣾⣿⣿⣿⣿⣿⣿

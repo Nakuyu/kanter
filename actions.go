@@ -10,6 +10,10 @@ import (
 )
 
 func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.Focused == FocusDetail {
+		return m.handleDetailFocusMode(msg)
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
@@ -23,20 +27,20 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Right):
 		m = m.moveCursorRight()
 
-	case msg.String() == "0":
+	case msg.String() == "1":
 		m.Cursor.Col = 0
 		m = m.clampRow()
-	case msg.String() == "1":
+	case msg.String() == "2":
 		m.Cursor.Col = 1
 		m = m.clampRow()
-	case msg.String() == "2":
+	case msg.String() == "3":
 		m.Cursor.Col = 2
 		m = m.clampRow()
 
 	case key.Matches(msg, m.keys.Tab):
-		m = m.moveCursorRight()
+		m = m.focusNext()
 	case key.Matches(msg, m.keys.ShiftTab):
-		m = m.moveCursorLeft()
+		m = m.focusPrev()
 
 	case key.Matches(msg, m.keys.Add):
 		m = m.enterAddMode()
@@ -63,6 +67,84 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// for tab and shift tab wrapping around.
+func (m Model) focusNext() Model {
+	if m.Focused == FocusDetail {
+		m.Focused = FocusList
+		m.Cursor.Col = 0
+		return m.clampRow()
+	}
+
+	if m.Cursor.Col < len(m.Board.Columns)-1 {
+		m.Cursor.Col++
+		return m.clampRow()
+	}
+
+	col := m.Board.Columns[m.Cursor.Col]
+	if m.Layout.DetailMode != DetailHidden &&
+		m.Cursor.Row < len(col.Tasks) &&
+		col.Tasks[m.Cursor.Row].Body != "" {
+		m.Focused = FocusDetail
+		if m.DetailVPReady {
+			m.DetailVP.GotoTop()
+		}
+		return m
+	}
+	m.Cursor.Col = 0
+	return m.clampRow()
+}
+
+func (m Model) focusPrev() Model {
+	if m.Focused == FocusDetail {
+		m.Focused = FocusList
+		m.Cursor.Col = len(m.Board.Columns) - 1
+		return m.clampRow()
+	}
+
+	if m.Cursor.Col > 0 {
+		m.Cursor.Col--
+		return m.clampRow()
+	}
+
+	col := m.Board.Columns[m.Cursor.Col]
+	if m.Layout.DetailMode != DetailHidden &&
+		m.Cursor.Row < len(col.Tasks) &&
+		col.Tasks[m.Cursor.Row].Body != "" {
+		m.Focused = FocusDetail
+		if m.DetailVPReady {
+			m.DetailVP.GotoTop()
+		}
+		return m
+	}
+
+	m.Cursor.Col = len(m.Board.Columns) - 1
+	return m.clampRow()
+}
+
+func (m Model) handleDetailFocusMode(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+
+	case key.Matches(msg, m.keys.Deny): // esc
+		m.Focused = FocusList
+		return m, nil
+
+	case key.Matches(msg, m.keys.Tab):
+		m = m.focusNext()
+		return m, nil
+
+	case key.Matches(msg, m.keys.ShiftTab):
+		m = m.focusPrev()
+		return m, nil
+
+	default:
+		var cmd tea.Cmd
+		m.DetailVP, cmd = m.DetailVP.Update(msg)
+		return m, cmd
+	}
 }
 func (m Model) enterAddMode() Model {
 	m.Mode = ModeAdding

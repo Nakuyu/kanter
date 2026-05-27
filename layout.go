@@ -22,6 +22,16 @@ type SpaceItem struct {
 	Weight  int
 }
 
+// SpaceAllocation distributes total pixels/rows across the items so like viewports and other lines
+// MinSize reservation and a weight is given to each item (it's not utilised well ik but just did it anyways)
+// so this weight is used for surplus space, Every item is allocated so nothing is lost to rounding,
+// three ways this should work
+// surplus so extra i mean (total > mins) so each gets their required minsize and then the remainder is split propor-
+// -tionally by weight is handed to items one by one
+// exact is (total == mins required by all items) so yea easy split
+// overflow (total < mins) so here items shrink proportionally by minsize ratio so total never exceeds the available
+// space, so without this columns would overflow the terminal width,
+// Also i m sure theres better ways to do this, prolly even some library, but it works good so it's fine
 func SpaceAllocation(total int, items []SpaceItem) []int {
 	if len(items) == 0 {
 		return nil
@@ -85,7 +95,9 @@ func computeLayout(width, height int, bodyLineCount int, hideDetail bool) Screen
 	detailMode, detailHeight := detailInfo(zone, bodyLineCount, hideDetail)
 
 	footerHeight := 4
-	vpHeight := max(height-footerHeight-detailHeight, 5)
+	// 2 lines reserved for sticky column header and bottom border,
+	// both rendered outside the viewport so the column stays framed
+	vpHeight := max(height-2-footerHeight-detailHeight, 3)
 
 	colWidths := columnWidths(zone, width)
 
