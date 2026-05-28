@@ -325,12 +325,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Viewport.Height = m.Layout.ViewportHeight
 		}
 		if !m.DetailVPReady {
-			m.DetailVP = viewport.New(max(m.Width-4, 10), max(m.Layout.DetailHeight-2, 1))
+			m.DetailVP = viewport.New(max(m.Width-4, 10), max(m.Layout.DetailHeight-3, 1))
 			m.DetailVP.KeyMap = viewport.KeyMap{}
 			m.DetailVPReady = true
 		} else {
 			m.DetailVP.Width = max(m.Width-4, 10)
-			m.DetailVP.Height = max(m.Layout.DetailHeight-2, 1)
+			m.DetailVP.Height = max(m.Layout.DetailHeight-3, 1)
 		}
 
 	case tea.KeyMsg:
@@ -392,7 +392,7 @@ func (m Model) recomputeLayout() Model {
 	// Sync detail viewport dimensions with layout
 	if m.DetailVPReady {
 		m.DetailVP.Width = max(m.Width-4, 10)
-		m.DetailVP.Height = max(m.Layout.DetailHeight-2, 1)
+		m.DetailVP.Height = max(m.Layout.DetailHeight-3, 1)
 	}
 
 	// If detail goes away, reset focus to list

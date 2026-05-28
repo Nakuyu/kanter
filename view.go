@@ -343,11 +343,6 @@ func (m Model) renderDetailPanel(title, body, status, updated string, w int, col
 			styledLines = append(styledLines, padRight("  "+truncate(line, innerW-2), innerW))
 		}
 		vpContent = strings.Join(styledLines, "\n")
-		if status != "" {
-			vpContent += "\n" + strings.Repeat(" ", innerW) // spacer
-			vpContent += "\n" + padRight(
-				fmt.Sprintf("  Status: %s    Updated: %s", status, updated), innerW)
-		}
 	} else if title != "" {
 		vpContent = padRight("  (no description)", innerW)
 	} else {
@@ -358,6 +353,9 @@ func (m Model) renderDetailPanel(title, body, status, updated string, w int, col
 	if m.DetailVPReady {
 		m.DetailVP.SetContent(vpContent)
 		vpLines := strings.Split(m.DetailVP.View(), "\n")
+		for len(vpLines) < m.DetailVP.Height {
+			vpLines = append(vpLines, "")
+		}
 		for _, line := range vpLines {
 			rows = append(rows, renderContentRow(line, color, NormalTask, true))
 		}
@@ -372,9 +370,13 @@ func (m Model) renderDetailPanel(title, body, status, updated string, w int, col
 		}
 	}
 
-	allRows := make([]string, 0, len(rows)+2)
+	statusLine := padRight(fmt.Sprintf("  %s  \u2014  %s", status, updated), innerW)
+	statusRow := renderContentRow(statusLine, color, DetailStatusStyle, true)
+
+	allRows := make([]string, 0, len(rows)+4)
 	allRows = append(allRows, top)
 	allRows = append(allRows, rows...)
+	allRows = append(allRows, statusRow)
 	allRows = append(allRows, bottom)
 
 	return lipgloss.JoinVertical(lipgloss.Left, allRows...)

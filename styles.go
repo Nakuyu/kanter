@@ -51,6 +51,9 @@ var (
 
 	Divider = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#21262D"))
+
+	DetailStatusStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6E7681"))
 )
 
 var (
