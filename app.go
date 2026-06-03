@@ -111,6 +111,8 @@ type Model struct {
 	Mode    Mode
 	Focused Focus
 
+	BoardName string
+
 	TitleInput   textinput.Model
 	BodyTextarea textarea.Model
 	FormStage    int
@@ -211,7 +213,7 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-func NewModel() Model {
+func NewModel(boardName string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Task title"
 	ti.CharLimit = 100
@@ -230,7 +232,7 @@ func NewModel() Model {
 	dvp := viewport.New(0, 0)
 	dvp.KeyMap = viewport.KeyMap{}
 
-	savePath, _ := boardPath()
+	savePath, _ := boardPath(boardName)
 
 	var cols [numStatuses]Column
 	for i, s := range allStatuses() {
@@ -242,6 +244,7 @@ func NewModel() Model {
 		Cursor:       Cursor{Col: 0, Row: 0},
 		Mode:         ModeNormal,
 		Focused:      FocusList,
+		BoardName:    boardName,
 		TitleInput:   ti,
 		BodyTextarea: ta,
 		FormStage:    formStageTitle,
@@ -264,9 +267,9 @@ type errMsg struct {
 	err error
 }
 
-func loadBoardCmd() tea.Cmd {
+func loadBoardCmd(boardName string) tea.Cmd {
 	return func() tea.Msg {
-		board, err := loadBoard()
+		board, err := loadBoard(boardName)
 		if err != nil {
 			if isBoardMissing(err) {
 				return loadFirstRunMsg{}
@@ -285,7 +288,7 @@ func loadBoardCmd() tea.Cmd {
 
 func saveBoardCmd(m Model) tea.Cmd {
 	return func() tea.Msg {
-		if err := saveBoard(m.Board); err != nil {
+		if err := saveBoard(m.Board, m.BoardName); err != nil {
 			return errMsg{err: err}
 		}
 		return nil
@@ -293,7 +296,7 @@ func saveBoardCmd(m Model) tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return loadBoardCmd()
+	return loadBoardCmd(m.BoardName)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

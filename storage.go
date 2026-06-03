@@ -7,9 +7,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
-func boardPath() (string, error) {
+// dataDir returns ~/.local/share/kanter, creating it if missing.
+func dataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("locate home dir: %w", err)
@@ -18,11 +21,55 @@ func boardPath() (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create data dir %s: %w", dir, err)
 	}
-	return filepath.Join(dir, "kanter.json"), nil
+	return dir, nil
 }
 
-func loadBoard() (Board, error) {
-	path, err := boardPath()
+func boardPath(name string) (string, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name+".json"), nil
+}
+
+func currentBoardPath() (string, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, ".current"), nil
+}
+
+// currentBoard reads the saved board name. Defaults to "kanter".
+func currentBoard() (string, error) {
+	path, err := currentBoardPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "kanter", nil
+		}
+		return "", fmt.Errorf("read current board: %w", err)
+	}
+	name := strings.TrimSpace(string(data))
+	if name == "" {
+		return "kanter", nil
+	}
+	return name, nil
+}
+
+func setCurrentBoard(name string) error {
+	path, err := currentBoardPath()
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, []byte(name), 0o644)
+}
+
+func loadBoard(name string) (Board, error) {
+	path, err := boardPath(name)
 	if err != nil {
 		return Board{}, err
 	}
@@ -39,18 +86,48 @@ func loadBoard() (Board, error) {
 	return board, nil
 }
 
-func saveBoard(board Board) error {
-	path, err := boardPath()
+func saveBoard(board Board, name string) error {
+	path, err := boardPath(name)
 	if err != nil {
 		return err
 	}
+	return saveBoardPath(board, path)
+}
 
+func saveBoardPath(board Board, path string) error {
 	data, err := json.MarshalIndent(board, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal board: %w", err)
 	}
-
 	return writeFileAtomic(path, data, 0o644)
+}
+
+func listBoards() ([]string, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read data dir: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// isBoardMissing reports whether the error indicates a missing board file.
+func isBoardMissing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
@@ -86,8 +163,4 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 		return fmt.Errorf("rename into place: %w", err)
 	}
 	return nil
-}
-
-func isBoardMissing(err error) bool {
-	return errors.Is(err, fs.ErrNotExist)
 }
