@@ -49,10 +49,7 @@ func handleList(name string) {
 		status := col.Status.String()
 		fmt.Printf("\n%s\n", status)
 		for _, task := range col.Tasks {
-			id := task.ID
-			if len(id) > 8 {
-				id = id[:8]
-			}
+			id := task.ID[:min(len(task.ID), 8)]
 			if task.Body != "" {
 				fmt.Printf("  %s  %s  (%s)\n", id, task.Title, task.Body)
 			} else {
@@ -63,21 +60,15 @@ func handleList(name string) {
 	fmt.Println()
 }
 
-func handleListBoards() {
+func handleListBoards(currentBoardName string) {
 	names, err := listBoards()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kanter: %v\n", err)
 		os.Exit(1)
 	}
 
-	current, err := currentBoard()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "kanter: %v\n", err)
-		os.Exit(1)
-	}
-
 	for _, name := range names {
-		if name == current {
+		if name == currentBoardName {
 			fmt.Printf("  %s (current)\n", name)
 		} else {
 			fmt.Printf("  %s\n", name)
@@ -98,7 +89,9 @@ func handleAdd(name, title, body string) {
 		Status:    StatusTodo,
 		UpdatedAt: time.Now(),
 	}
-	board.Columns[0].Tasks = append(board.Columns[0].Tasks, task)
+	board.Columns[columnIndex(task.Status)].Tasks = append(
+		board.Columns[columnIndex(task.Status)].Tasks, task,
+	)
 
 	if err := saveBoard(board, name); err != nil {
 		fmt.Fprintf(os.Stderr, "kanter: %v\n", err)

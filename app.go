@@ -123,8 +123,6 @@ type Model struct {
 	StatusMsg     string
 	StatusMsgType MsgType
 
-	SavePath string
-
 	Viewport      viewport.Model
 	ViewportReady bool
 	Layout        ScreenLayout
@@ -232,8 +230,6 @@ func NewModel(boardName string) Model {
 	dvp := viewport.New(0, 0)
 	dvp.KeyMap = viewport.KeyMap{}
 
-	savePath, _ := boardPath(boardName)
-
 	var cols [numStatuses]Column
 	for i, s := range allStatuses() {
 		cols[i] = Column{Status: s, Tasks: []Task{}}
@@ -248,7 +244,6 @@ func NewModel(boardName string) Model {
 		TitleInput:   ti,
 		BodyTextarea: ta,
 		FormStage:    formStageTitle,
-		SavePath:     savePath,
 		Viewport:     vp,
 		DetailVP:     dvp,
 		keys:         defaultKeyMap(),

@@ -48,7 +48,7 @@ func main() {
 		case "list":
 			handleList(boardName)
 		case "list-boards":
-			handleListBoards()
+			handleListBoards(boardName)
 		case "add":
 			if len(args) < 2 {
 				fmt.Fprintln(os.Stderr, "usage: kanter add <title> [body]")
